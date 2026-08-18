@@ -3,9 +3,8 @@
 [![Validate 9288 port](https://github.com/HelloClyde/bbk9288-gam4980-player/actions/workflows/validate-9288.yml/badge.svg)](https://github.com/HelloClyde/bbk9288-gam4980-player/actions/workflows/validate-9288.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](COPYING)
 
-将 [`gam4980-player-for9588`](https://github.com/HelloClyde/gam4980-player-for9588)
-移植到 BBK 9288。程序使用 9288 原生 KF2 格式和
-[`app_env_9288`](https://gitee.com/BBK_9288T/app_env) SDK，并已在
+将 A 系列 GAM4980 模拟器移植到 BBK 9288。程序使用 9288 原生 KF2 格式和
+9288 SDK，并已在
 [`bbk9288-emulator`](https://github.com/HelloClyde/bbk9288-emulator) 中验证
 《伏魔记》的文件选择、启动、主菜单和开场剧情。
 
