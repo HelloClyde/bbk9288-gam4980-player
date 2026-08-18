@@ -1,0 +1,43 @@
+name: Validate 9288 port
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out player repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check Python build scripts
+        run: |
+          python3 -m py_compile \
+            build_9288.py package_release_9288.py \
+            tests/emulator_qmp_smoke.py tests/prepare_emulator_nand.py \
+            tests/check_2x_frame.py
+
+      - name: Build and run core smoke test
+        run: |
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -DDL_DOWN -D_RLS_ -Isrc \
+            tests/core_smoke.c src/gam4980_core.c \
+            -o /tmp/gam4980-core-smoke
+          /tmp/gam4980-core-smoke \
+            应用/数据/游戏/gam4980/8.BIN \
+            应用/数据/游戏/gam4980/E.BIN
