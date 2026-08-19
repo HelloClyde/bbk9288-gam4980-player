@@ -22,7 +22,10 @@
 #define FRAME_TIMER_ID 1
 #define FRAME_TIMER_SPEED 20
 #define FRAME_TIMER_GUARD_SPEED 30000
-#define ESCAPE_QUIT_TICKS GUI_TIMER_HZ
+#define EXIT_HOLD_TIMER_TICKS 20u
+#define RUN_WINDOW_FAILED 0
+#define RUN_WINDOW_CLOSED 1
+#define RUN_WINDOW_GAME_ENDED 2
 
 /* Keep the public 9288 SDK ABI compile-checked.  Its SysBltFrame member is at
  * +0x59c; the runtime firmware compatibility shift is handled at the call. */
@@ -76,8 +79,9 @@ static u8 g_static_ram[GAM4980_RAM_SIZE]
     __attribute__((aligned(4), section(".scratch")));
 static FS_FILE *g_rom_files[2];
 static int g_close_requested;
+static int g_game_ended;
 static int g_escape_down;
-static u32 g_escape_down_tick;
+static u32 g_exit_hold_timer_ticks;
 static u32 g_timer_frame_phase;
 #ifdef GAM4980_LOAD_DIAGNOSTICS
 static int g_first_frame_logged;
@@ -148,6 +152,11 @@ void *memset(void *destination, int value, unsigned int size)
 static u32 tick_elapsed(u32 start, u32 end)
 {
     return end - start;
+}
+
+static int is_exit_scancode(T_UHWORD scancode)
+{
+    return scancode == SCANCODE_ESCAPE || scancode == SCANCODE_F12;
 }
 
 static void show_error(const char *text)
@@ -599,6 +608,7 @@ static T_WORD selector_window_proc(
             selector_move(window, SELECTOR_VISIBLE_ROWS);
             break;
         case SCANCODE_ESCAPE:
+        case SCANCODE_F12:
             g_selector_done = 1;
             break;
         default:
@@ -866,7 +876,6 @@ static u8 map_scancode(T_UHWORD scancode)
     case SCANCODE_F9: return GAM4980_KEY_SEARCH;
     case SCANCODE_F10: return GAM4980_KEY_DOWNLOAD;
     case SCANCODE_F11: return GAM4980_KEY_HELP;
-    case SCANCODE_F12: return GAM4980_KEY_EXIT;
     default: return 0xffu;
     }
 }
@@ -892,16 +901,15 @@ static void run_timer_frame(void)
             g_first_frame_logged = 1;
         }
 #endif
+        if (gam4980_shutdown_requested()) {
+            g_game_ended = 1;
+            break;
+        }
     }
     if (gam4980_render_frame())
         present_2x(gam4980_packed_frame());
-    if (gam4980_shutdown_requested())
+    if (g_escape_down && ++g_exit_hold_timer_ticks >= EXIT_HOLD_TIMER_TICKS)
         g_close_requested = 1;
-    if (g_escape_down && tick_elapsed(
-            g_escape_down_tick, (u32)fnGUI_GetTickCount()
-        ) >= ESCAPE_QUIT_TICKS)
-        g_close_requested = 1;
-
 }
 
 static T_WORD gam_window_proc(
@@ -913,14 +921,10 @@ static T_WORD gam_window_proc(
     (void)lparam;
     switch (message) {
     case MSG_KEYDOWN:
-        if (scancode == SCANCODE_ESCAPE) {
+        if (is_exit_scancode(scancode)) {
             if (!g_escape_down) {
                 g_escape_down = 1;
-                g_escape_down_tick = (u32)fnGUI_GetTickCount();
-            } else if (tick_elapsed(
-                           g_escape_down_tick, (u32)fnGUI_GetTickCount()
-                       ) >= ESCAPE_QUIT_TICKS) {
-                g_close_requested = 1;
+                g_exit_hold_timer_ticks = 0;
             }
         } else {
             u8 key = map_scancode(scancode);
@@ -930,15 +934,10 @@ static T_WORD gam_window_proc(
         }
         return 0;
     case MSG_KEYUP:
-        if (scancode == SCANCODE_ESCAPE && g_escape_down) {
-            if (tick_elapsed(
-                    g_escape_down_tick, (u32)fnGUI_GetTickCount()
-                ) < ESCAPE_QUIT_TICKS)
-                gam4980_key_down(GAM4980_KEY_EXIT);
-            else {
-                g_close_requested = 1;
-            }
+        if (is_exit_scancode(scancode) && g_escape_down) {
+            gam4980_key_down(GAM4980_KEY_EXIT);
             g_escape_down = 0;
+            g_exit_hold_timer_ticks = 0;
         }
         return 0;
     case MSG_TIMER:
@@ -1035,7 +1034,9 @@ static void destroy_emulator_window(void)
     }
     g_main_window = 0;
     fnGUI_DestroyMainWindow(window);
-    fnGUI_PostQuitMessage(window);
+    /* App_Main may open the selector again after the emulated game exits.
+     * PostQuitMessage is thread-wide on 9288, so posting it here would make
+     * that new selector consume the stale quit and close the whole app. */
     fnGUI_ThrowAwayMessages(window);
     fnGUI_MainWindowCleanup(window);
 }
@@ -1049,7 +1050,9 @@ static int run_emulator_window(void)
     write_load_diagnostic(0x0bu, 0u, 0u);
     clear_screen();
     g_close_requested = 0;
+    g_game_ended = 0;
     g_escape_down = 0;
+    g_exit_hold_timer_ticks = 0;
     g_timer_frame_phase = 0;
 #ifdef GAM4980_LOAD_DIAGNOSTICS
     g_first_frame_logged = 0;
@@ -1063,7 +1066,7 @@ static int run_emulator_window(void)
         return 0;
     }
 
-    while (!g_close_requested && !gam4980_shutdown_requested()) {
+    while (!g_close_requested && !g_game_ended) {
         /* Thunder Fighter pumps the global GUI queue during gameplay.  Timer
          * and system messages are not restricted to the game's window. */
         if (!fnGUI_GetMessage(&message, 0)) {
@@ -1087,21 +1090,18 @@ static int run_emulator_window(void)
 
     (void)fnGUI_KillTimer(g_main_window, FRAME_TIMER_ID);
     destroy_emulator_window();
-    return 1;
+    if (g_game_ended && !g_close_requested)
+        return RUN_WINDOW_GAME_ENDED;
+    return RUN_WINDOW_CLOSED;
 }
 
-T_WORD App_Main(void)
+static int run_selected_game(void)
 {
     int core_status;
-    int initialized = 0;
     int rom_status;
+    int run_status;
     long game_size;
 
-    (void)fs_mkdir(k_game_root);
-    memory_diagnostic(0x00u, 0u, 0u);
-    write_load_diagnostic(0x00u, 0u, 0u);
-    if (!select_game())
-        return 0;
     memory_diagnostic(0x01u, 0u, 0u);
     write_load_diagnostic(0x01u, 0u, 0u);
     if (!create_emulator_window()) {
@@ -1161,7 +1161,6 @@ T_WORD App_Main(void)
     }
     memory_diagnostic(0x05u, (u32)core_status, 0u);
     write_load_diagnostic(0x07u, (u32)core_status, 0u);
-    initialized = 1;
     if (!load_game(g_game_path)) {
         show_error("The selected GAM file is invalid or unreadable.");
         release_buffers();
@@ -1169,15 +1168,33 @@ T_WORD App_Main(void)
         return -4;
     }
     memory_diagnostic(0x06u, (u32)game_size, 0u);
-    if (!run_emulator_window()) {
+    run_status = run_emulator_window();
+    if (run_status == RUN_WINDOW_FAILED) {
         show_error("Could not create the GAM4980 window.");
         release_buffers();
         return -5;
     }
-    if (initialized)
-        write_save();
+    write_save();
     release_buffers();
-    return 0;
+    return run_status;
+}
+
+T_WORD App_Main(void)
+{
+    int run_status;
+
+    (void)fs_mkdir(k_game_root);
+    memory_diagnostic(0x00u, 0u, 0u);
+    write_load_diagnostic(0x00u, 0u, 0u);
+    for (;;) {
+        if (!select_game())
+            return 0;
+        run_status = run_selected_game();
+        if (run_status < 0)
+            return (T_WORD)run_status;
+        if (run_status != RUN_WINDOW_GAME_ENDED)
+            return 0;
+    }
 }
 
 /* The upstream core includes the instruction interpreter as one unit. */

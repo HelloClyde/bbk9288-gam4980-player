@@ -121,9 +121,13 @@ def main() -> None:
         time.sleep(8.0)
         qmp.capture(args.output / "05-story-dialog.ppm")
 
-        qmp.key("esc", hold=1.2)
-        time.sleep(2.0)
-        qmp.capture(args.output / "06-after-long-escape.ppm")
+        qmp.key("esc")       # short press sends game Exit without closing the app
+        time.sleep(3.0)
+        qmp.capture(args.output / "06-after-short-exit.ppm")
+
+        qmp.key("esc", hold=1.4)  # a deliberate hold closes the 9288 app
+        time.sleep(3.0)
+        qmp.capture(args.output / "07-after-long-exit.ppm")
     finally:
         qmp.close()
 
