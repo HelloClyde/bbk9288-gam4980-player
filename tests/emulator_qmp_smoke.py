@@ -74,7 +74,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4444)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--boot-wait", type=float, default=6.0)
+    parser.add_argument("--boot-wait", type=float, default=12.0)
+    parser.add_argument(
+        "--from-home",
+        action="store_true",
+        help="start with the emulator already showing the home screen",
+    )
     return parser.parse_args()
 
 
@@ -83,14 +88,15 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     qmp = QmpClient(args.host, args.port)
     try:
-        time.sleep(args.boot_wait)
-        qmp.key("ret")       # dismiss the clock prompt (calendar opens below it)
-        time.sleep(1.0)
-        qmp.key("f12")       # leave Calendar
-        time.sleep(1.0)
-        qmp.key("f5")        # Start / home
-        time.sleep(2.0)
-        qmp.key("9")         # Entertainment category
+        if not args.from_home:
+            time.sleep(args.boot_wait)
+            qmp.key("ret")   # dismiss the clock prompt (calendar opens below it)
+            time.sleep(1.0)
+            qmp.key("f12")   # leave Calendar
+            time.sleep(1.0)
+            qmp.key("f5")    # Start / home
+            time.sleep(2.0)
+        qmp.key("9", hold=1.0)  # Entertainment category needs a full key scan
         time.sleep(2.0)
         for _ in range(2):   # row 3, column 1: GAM4980
             qmp.key("down")
@@ -101,7 +107,7 @@ def main() -> None:
         time.sleep(3.0)
         qmp.capture(args.output / "02-file-selector.ppm")
 
-        qmp.key("ret")       # select the highlighted .gam, even when it is the only one
+        qmp.key("ret", hold=1.0)  # select the highlighted .gam with a fresh press/release
         time.sleep(55.0)      # allow the full 9288-speed logo/title sequence
         qmp.capture(args.output / "03-game-menu.ppm")
 

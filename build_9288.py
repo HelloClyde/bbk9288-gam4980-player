@@ -21,6 +21,7 @@ MACHINE_9288 = 1
 # KF2 module 8 is the home menu's Entertainment category.
 APP_MODULE = 8
 APP_NAME = b"GAM4980"
+APP_LOAD_ADDRESS = 0x02700000
 
 
 def run(command: list[str], step: str) -> None:
@@ -79,10 +80,23 @@ def find_tool(toolchain: Path, name: str) -> str:
     raise SystemExit(f"missing S1C33 tool: {name}; searched under {toolchain}")
 
 
+def read_map_symbol(map_path: Path, name: str) -> int:
+    suffix = f" {name} = ."
+    for line in map_path.read_text(encoding="utf-8").splitlines():
+        if line.endswith(suffix):
+            try:
+                return int(line.split()[0], 16)
+            except (IndexError, ValueError) as exc:
+                raise SystemExit(f"invalid {name} entry in {map_path}") from exc
+    raise SystemExit(f"missing {name} in linker map: {map_path}")
+
+
 def compile_app(
     sdk: Path,
     toolchain: Path,
     switch_dispatch: bool,
+    load_diagnostics: bool,
+    memory_diagnostics: bool,
     optimization: str,
 ) -> bytes:
     clang = find_tool(toolchain, "clang")
@@ -119,6 +133,10 @@ def compile_app(
     ]
     if switch_dispatch:
         common_flags.append("-DS6502_NO_COMPUTED_GOTO")
+    if load_diagnostics:
+        common_flags.append("-DGAM4980_LOAD_DIAGNOSTICS")
+    if memory_diagnostics:
+        common_flags.append("-DGAM4980_MEMORY_DIAGNOSTICS")
     for source in (
         SOURCE_ROOT / "gam4980_9288_start.c",
         SOURCE_ROOT / "gam4980_9288_runtime.c",
@@ -157,7 +175,23 @@ def compile_app(
         "extract 9288 payload",
     )
     run([readelf, "-h", "-S", str(elf)], "inspect 9288 ELF")
-    return raw.read_bytes()
+    payload = raw.read_bytes()
+    bss_start = read_map_symbol(map_path, "__bss_start")
+    scratch_end = read_map_symbol(map_path, "__scratch_end")
+    payload_end = read_map_symbol(map_path, "__payload_end")
+    expected_size = payload_end - APP_LOAD_ADDRESS
+    if expected_size <= 0 or len(payload) != expected_size:
+        raise SystemExit(
+            "KF2 payload does not reserve the complete runtime image: "
+            f"{len(payload)} bytes, expected {expected_size}"
+        )
+    reserve_start = bss_start - APP_LOAD_ADDRESS
+    reserve_end = scratch_end - APP_LOAD_ADDRESS
+    if not (0 <= reserve_start <= reserve_end < len(payload)) or any(
+        byte != 0xff for byte in payload[reserve_start:reserve_end]
+    ):
+        raise SystemExit("KF2 BSS/scratch reservation is not file-backed")
+    return payload
 
 
 def read_icon(path: Path, width: int, height: int) -> bytes:
@@ -272,6 +306,16 @@ def parse_args() -> argparse.Namespace:
         help="use the slower portable 6502 switch dispatcher",
     )
     parser.add_argument(
+        "--load-diagnostics",
+        action="store_true",
+        help="persist true-device load stages to A:\\gam4980\\DIAG.TXT",
+    )
+    parser.add_argument(
+        "--memory-diagnostics",
+        action="store_true",
+        help="expose volatile load/ROM/frame counters for emulator inspection",
+    )
+    parser.add_argument(
         "--optimization",
         choices=("2", "3", "s", "z"),
         default="s",
@@ -295,6 +339,8 @@ def main() -> None:
             sdk,
             args.toolchain.resolve(),
             switch_dispatch=args.switch_dispatch,
+            load_diagnostics=args.load_diagnostics,
+            memory_diagnostics=args.memory_diagnostics,
             optimization=args.optimization,
         )
     app = pack_kf2(payload)
