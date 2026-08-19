@@ -23,9 +23,6 @@
 #define FRAME_TIMER_SPEED 20
 #define FRAME_TIMER_GUARD_SPEED 30000
 #define EXIT_HOLD_TIMER_TICKS 20u
-#define RUN_WINDOW_FAILED 0
-#define RUN_WINDOW_CLOSED 1
-#define RUN_WINDOW_GAME_ENDED 2
 
 /* Keep the public 9288 SDK ABI compile-checked.  Its SysBltFrame member is at
  * +0x59c; the runtime firmware compatibility shift is handled at the call. */
@@ -79,7 +76,6 @@ static u8 g_static_ram[GAM4980_RAM_SIZE]
     __attribute__((aligned(4), section(".scratch")));
 static FS_FILE *g_rom_files[2];
 static int g_close_requested;
-static int g_game_ended;
 static int g_escape_down;
 static u32 g_exit_hold_timer_ticks;
 static u32 g_timer_frame_phase;
@@ -901,13 +897,11 @@ static void run_timer_frame(void)
             g_first_frame_logged = 1;
         }
 #endif
-        if (gam4980_shutdown_requested()) {
-            g_game_ended = 1;
-            break;
-        }
     }
     if (gam4980_render_frame())
         present_2x(gam4980_packed_frame());
+    if (gam4980_shutdown_requested())
+        g_close_requested = 1;
     if (g_escape_down && ++g_exit_hold_timer_ticks >= EXIT_HOLD_TIMER_TICKS)
         g_close_requested = 1;
 }
@@ -1034,9 +1028,7 @@ static void destroy_emulator_window(void)
     }
     g_main_window = 0;
     fnGUI_DestroyMainWindow(window);
-    /* App_Main may open the selector again after the emulated game exits.
-     * PostQuitMessage is thread-wide on 9288, so posting it here would make
-     * that new selector consume the stale quit and close the whole app. */
+    fnGUI_PostQuitMessage(window);
     fnGUI_ThrowAwayMessages(window);
     fnGUI_MainWindowCleanup(window);
 }
@@ -1050,7 +1042,6 @@ static int run_emulator_window(void)
     write_load_diagnostic(0x0bu, 0u, 0u);
     clear_screen();
     g_close_requested = 0;
-    g_game_ended = 0;
     g_escape_down = 0;
     g_exit_hold_timer_ticks = 0;
     g_timer_frame_phase = 0;
@@ -1066,7 +1057,7 @@ static int run_emulator_window(void)
         return 0;
     }
 
-    while (!g_close_requested && !g_game_ended) {
+    while (!g_close_requested && !gam4980_shutdown_requested()) {
         /* Thunder Fighter pumps the global GUI queue during gameplay.  Timer
          * and system messages are not restricted to the game's window. */
         if (!fnGUI_GetMessage(&message, 0)) {
@@ -1090,18 +1081,21 @@ static int run_emulator_window(void)
 
     (void)fnGUI_KillTimer(g_main_window, FRAME_TIMER_ID);
     destroy_emulator_window();
-    if (g_game_ended && !g_close_requested)
-        return RUN_WINDOW_GAME_ENDED;
-    return RUN_WINDOW_CLOSED;
+    return 1;
 }
 
-static int run_selected_game(void)
+T_WORD App_Main(void)
 {
     int core_status;
+    int initialized = 0;
     int rom_status;
-    int run_status;
     long game_size;
 
+    (void)fs_mkdir(k_game_root);
+    memory_diagnostic(0x00u, 0u, 0u);
+    write_load_diagnostic(0x00u, 0u, 0u);
+    if (!select_game())
+        return 0;
     memory_diagnostic(0x01u, 0u, 0u);
     write_load_diagnostic(0x01u, 0u, 0u);
     if (!create_emulator_window()) {
@@ -1161,6 +1155,7 @@ static int run_selected_game(void)
     }
     memory_diagnostic(0x05u, (u32)core_status, 0u);
     write_load_diagnostic(0x07u, (u32)core_status, 0u);
+    initialized = 1;
     if (!load_game(g_game_path)) {
         show_error("The selected GAM file is invalid or unreadable.");
         release_buffers();
@@ -1168,33 +1163,15 @@ static int run_selected_game(void)
         return -4;
     }
     memory_diagnostic(0x06u, (u32)game_size, 0u);
-    run_status = run_emulator_window();
-    if (run_status == RUN_WINDOW_FAILED) {
+    if (!run_emulator_window()) {
         show_error("Could not create the GAM4980 window.");
         release_buffers();
         return -5;
     }
-    write_save();
+    if (initialized)
+        write_save();
     release_buffers();
-    return run_status;
-}
-
-T_WORD App_Main(void)
-{
-    int run_status;
-
-    (void)fs_mkdir(k_game_root);
-    memory_diagnostic(0x00u, 0u, 0u);
-    write_load_diagnostic(0x00u, 0u, 0u);
-    for (;;) {
-        if (!select_game())
-            return 0;
-        run_status = run_selected_game();
-        if (run_status < 0)
-            return (T_WORD)run_status;
-        if (run_status != RUN_WINDOW_GAME_ENDED)
-            return 0;
-    }
+    return 0;
 }
 
 /* The upstream core includes the instruction interpreter as one unit. */

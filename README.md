@@ -160,7 +160,7 @@ python3 tools/convert_9288_icon.py \
 - Page Up / Page Down：对应原机翻页键
 - F1–F12：Speak、CE、汉英、双解、Power、Menu、Modify、Shift、Search、
   Download、Help、Exit
-- 短按 Esc 或 F12：发送游戏 Exit；游戏结束时返回 `.gam` 文件选择
+- 短按 Esc 或 F12：发送游戏 Exit
 - 长按 Esc 或 F12 一秒：关闭 9288 应用
 
 ## 验证
