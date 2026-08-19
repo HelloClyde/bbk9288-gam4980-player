@@ -35,9 +35,21 @@ SECTIONS
     . = ALIGN(4);
     __bss_end = .;
 
-    .noinit (NOLOAD) :
+    .scratch (NOLOAD) :
     {
         . = ALIGN(4);
-        *(.noinit .noinit.*)
+        __scratch_start = .;
+        *(.scratch .scratch.*)
+        __scratch_end = .;
     }
+
+    /* KF2 only carries a flat payload length.  A real byte after the NOLOAD
+       scratch range makes llvm-objcopy materialize the entire intervening
+       range in the payload, so the 9288 loader reserves it. */
+    . = ALIGN(4);
+    .payload_tail :
+    {
+        BYTE(0xff)
+    }
+    __payload_end = .;
 }

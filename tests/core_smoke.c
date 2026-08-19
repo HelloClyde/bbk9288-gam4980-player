@@ -4,6 +4,22 @@
 
 #include "gam4980_core.h"
 
+static u8 *stream_roms[2];
+static u32 stream_rom_reads;
+
+static int stream_rom_read(
+    void *context, u8 region, u32 offset, u8 *out, u32 size
+)
+{
+    (void)context;
+    if (region > GAM4980_ROM_REGION_E || !out ||
+        offset > GAM4980_ROM_SIZE || size > GAM4980_ROM_SIZE - offset)
+        return 0;
+    memcpy(out, stream_roms[region] + offset, size);
+    ++stream_rom_reads;
+    return 1;
+}
+
 static int load_file(const char *path, u8 *data, u32 size)
 {
     FILE *file = fopen(path, "rb");
@@ -16,7 +32,7 @@ static int load_file(const char *path, u8 *data, u32 size)
     return ok;
 }
 
-static int load_game(const char *path)
+static int load_game(const char *path, u8 *flash)
 {
     u8 header[GAM4980_GAME_HEADER_SIZE];
     FILE *file = fopen(path, "rb");
@@ -35,44 +51,69 @@ static int load_game(const char *path)
         return 0;
     }
     fclose(file);
-    return gam4980_load_game_header(header, (u32)size) > 0;
+    if (gam4980_load_game_header(header, (u32)size) <= 0)
+        return 0;
+    return flash[0x801c] == ((u32)size & 0xffu) &&
+        flash[0x801d] == (((u32)size >> 8) & 0xffu) &&
+        flash[0x801e] == (((u32)size >> 16) & 0xffu);
 }
 
 int main(int argc, char **argv)
 {
     gam4980_buffers_t buffers;
     const u8 *frame;
+    const char *frame_count_text;
+    u8 *rom_8;
+    u8 *rom_e;
     u32 checksum = 2166136261u;
     u32 index;
+    unsigned long frame_count = 120;
     int result;
 
     if (argc != 3 && argc != 4) {
         fprintf(stderr, "usage: core_smoke 8.BIN E.BIN [game.gam]\n");
         return 2;
     }
+    frame_count_text = getenv("GAM4980_SMOKE_FRAMES");
+    if (frame_count_text && *frame_count_text) {
+        char *end = 0;
+
+        frame_count = strtoul(frame_count_text, &end, 10);
+        if (!end || *end || frame_count == 0)
+            return 2;
+    }
     memset(&buffers, 0, sizeof(buffers));
     buffers.ram = (u8 *)malloc(GAM4980_RAM_SIZE);
     buffers.flash = (u8 *)malloc(GAM4980_FLASH_SIZE);
-    buffers.rom_8 = (u8 *)malloc(GAM4980_ROM_SIZE);
-    buffers.rom_e = (u8 *)malloc(GAM4980_ROM_SIZE);
+    rom_8 = (u8 *)malloc(GAM4980_ROM_SIZE);
+    rom_e = (u8 *)malloc(GAM4980_ROM_SIZE);
+    buffers.rom_8 = rom_8;
+    buffers.rom_e = rom_e;
     buffers.framebuffer = 0;
     buffers.flash_size = GAM4980_FLASH_SIZE;
-    if (!buffers.ram || !buffers.flash || !buffers.rom_8 || !buffers.rom_e)
+    if (!buffers.ram || !buffers.flash || !rom_8 || !rom_e)
         return 3;
-    if (!load_file(argv[1], buffers.rom_8, GAM4980_ROM_SIZE) ||
-        !load_file(argv[2], buffers.rom_e, GAM4980_ROM_SIZE))
+    if (!load_file(argv[1], rom_8, GAM4980_ROM_SIZE) ||
+        !load_file(argv[2], rom_e, GAM4980_ROM_SIZE))
         return 4;
+    if (getenv("GAM4980_STREAM_ROM")) {
+        stream_roms[GAM4980_ROM_REGION_8] = rom_8;
+        stream_roms[GAM4980_ROM_REGION_E] = rom_e;
+        buffers.rom_8 = 0;
+        buffers.rom_e = 0;
+        buffers.rom_read = stream_rom_read;
+    }
     result = gam4980_init(&buffers);
     if (result <= 0) {
         fprintf(stderr, "gam4980_init failed: %d\n", result);
         return 5;
     }
     if (argc == 4) {
-        int frame_number;
+        unsigned long frame_number;
 
-        if (!load_game(argv[3]))
+        if (!load_game(argv[3], buffers.flash))
             return 6;
-        for (frame_number = 0; frame_number < 120; ++frame_number)
+        for (frame_number = 0; frame_number < frame_count; ++frame_number)
             gam4980_run_frame();
     } else {
         (void)gam4980_render_frame();
@@ -85,14 +126,14 @@ int main(int argc, char **argv)
         checksum *= 16777619u;
     }
     printf(
-        "core initialized: packed=%u bytes fnv1a=%08x halted=%d\n",
+        "core initialized: packed=%u bytes fnv1a=%08x halted=%d rom_reads=%u\n",
         (unsigned)GAM4980_LCD_PACKED_SIZE, (unsigned)checksum,
-        gam4980_cpu_halted()
+        gam4980_cpu_halted(), (unsigned)stream_rom_reads
     );
     gam4980_deinit();
     free(buffers.ram);
     free(buffers.flash);
-    free(buffers.rom_8);
-    free(buffers.rom_e);
+    free(rom_8);
+    free(rom_e);
     return 0;
 }

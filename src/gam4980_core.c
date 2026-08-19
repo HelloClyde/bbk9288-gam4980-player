@@ -144,15 +144,28 @@ static struct {
 } sys;
 
 #define ROM_BANK_SIZE 0x1000u
+#define ROM_CACHE_LINES 32u
 #ifndef GAM4980_CACHE_STORAGE
 #define GAM4980_CACHE_STORAGE
 #endif
-static uint8_t rom_bank_cache[16][ROM_BANK_SIZE] GAM4980_CACHE_STORAGE;
+static uint8_t rom_bank_cache[ROM_CACHE_LINES][ROM_BANK_SIZE]
+    GAM4980_CACHE_STORAGE;
 static uint8_t rom_direct_cache[ROM_BANK_SIZE] GAM4980_CACHE_STORAGE;
 static uint8_t rom_boot_page[0x100] GAM4980_CACHE_STORAGE;
+static uint32_t rom_bank_page[ROM_CACHE_LINES];
+static uint32_t rom_bank_stamp[ROM_CACHE_LINES];
+static uint32_t rom_cache_clock;
+static uint8_t rom_bank_region[ROM_CACHE_LINES];
+static uint8_t rom_bank_valid[ROM_CACHE_LINES];
+static uint8_t rom_slot_line[16];
 static uint32_t rom_direct_page;
 static uint8_t rom_direct_region;
 static uint8_t rom_direct_valid;
+
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+volatile uint32_t g_gam4980_rom_trace_index;
+volatile uint32_t g_gam4980_rom_trace[256];
+#endif
 
 static int rom_read_range(
     uint8_t region, uint32_t offset, uint8_t *out, uint32_t size
@@ -161,7 +174,8 @@ static int rom_read_range(
     const uint8_t *resident =
         region == GAM4980_ROM_REGION_8 ? sys.rom_8 : sys.rom_e;
 
-    if (offset > GAM4980_ROM_SIZE || size > GAM4980_ROM_SIZE - offset)
+    if ((!out && size) || offset > GAM4980_ROM_SIZE ||
+        size > GAM4980_ROM_SIZE - offset)
         return 0;
     if (resident) {
         gam4980_memcpy(out, resident + offset, size);
@@ -170,6 +184,66 @@ static int rom_read_range(
     if (!sys.rom_read)
         return 0;
     return sys.rom_read(sys.rom_context, region, offset, out, size);
+}
+
+static uint8_t *rom_cached_bank(
+    uint8_t slot, uint8_t region, uint32_t page
+)
+{
+    uint32_t oldest_stamp = 0xffffffffu;
+    uint8_t selected = 0xffu;
+    uint8_t line;
+
+    for (line = 0; line < ROM_CACHE_LINES; ++line) {
+        if (rom_bank_valid[line] && rom_bank_region[line] == region &&
+            rom_bank_page[line] == page) {
+            rom_slot_line[slot] = line;
+            rom_bank_stamp[line] = ++rom_cache_clock;
+            return rom_bank_cache[line];
+        }
+    }
+
+    for (line = 0; line < ROM_CACHE_LINES; ++line) {
+        uint8_t owner;
+        int pinned = 0;
+
+        if (!rom_bank_valid[line]) {
+            selected = line;
+            break;
+        }
+        for (owner = 0; owner < 16u; ++owner) {
+            if (owner != slot && rom_slot_line[owner] == line) {
+                pinned = 1;
+                break;
+            }
+        }
+        if (!pinned && rom_bank_stamp[line] < oldest_stamp) {
+            oldest_stamp = rom_bank_stamp[line];
+            selected = line;
+        }
+    }
+    if (selected == 0xffu)
+        return 0;
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+    {
+        uint32_t trace_index = g_gam4980_rom_trace_index++;
+
+        g_gam4980_rom_trace[trace_index & 255u] =
+            ((uint32_t)slot << 28) | ((uint32_t)region << 27) |
+            ((page >> 12) & 0x7ffffu);
+    }
+#endif
+    rom_bank_valid[selected] = 0;
+    if (!rom_read_range(
+            region, page, rom_bank_cache[selected], ROM_BANK_SIZE
+        ))
+        return 0;
+    rom_bank_region[selected] = region;
+    rom_bank_page[selected] = page;
+    rom_bank_stamp[selected] = ++rom_cache_clock;
+    rom_bank_valid[selected] = 1;
+    rom_slot_line[slot] = selected;
+    return rom_bank_cache[selected];
 }
 
 static uint8_t rom_read_byte(uint8_t region, uint32_t offset)
@@ -607,14 +681,10 @@ static void mem_bs(uint8_t sel)
             ? sys.rom_8 + (paddr - 0x800000)
             : 0;
 
-        if (!sys.rom_8) {
-            bank = rom_bank_cache[sel];
-            if (!rom_read_range(
-                    GAM4980_ROM_REGION_8, paddr - 0x800000, bank,
-                    ROM_BANK_SIZE
-                ))
-                bank = 0;
-        }
+        if (!sys.rom_8)
+            bank = rom_cached_bank(
+                sel, GAM4980_ROM_REGION_8, paddr - 0x800000
+            );
         for (int i = 0; i < 16; i += 1) {
             sys.mem_r[sel * 16 + i] = bank ? bank + i * 0x100 : 0;
             sys.mem_ir[sel * 16 + i] = rom_8_vread;
@@ -625,14 +695,10 @@ static void mem_bs(uint8_t sel)
             ? sys.rom_e + (paddr - 0xe00000)
             : 0;
 
-        if (!sys.rom_e) {
-            bank = rom_bank_cache[sel];
-            if (!rom_read_range(
-                    GAM4980_ROM_REGION_E, paddr - 0xe00000, bank,
-                    ROM_BANK_SIZE
-                ))
-                bank = 0;
-        }
+        if (!sys.rom_e)
+            bank = rom_cached_bank(
+                sel, GAM4980_ROM_REGION_E, paddr - 0xe00000
+            );
         for (int i = 0; i < 16; i += 1) {
             sys.mem_r[sel * 16 + i] = bank ? bank + i * 0x100 : 0;
             sys.mem_ir[sel * 16 + i] = rom_e_vread;
@@ -807,6 +873,9 @@ int gam4980_init(const gam4980_buffers_t *buffers)
     sys.ram[_INCR] = 0x0f;
 
     rom_direct_valid = 0;
+    rom_cache_clock = 0;
+    gam4980_memset(rom_bank_valid, 0, sizeof(rom_bank_valid));
+    gam4980_memset(rom_slot_line, 0xff, sizeof(rom_slot_line));
     if (!mem_init())
         return -4;
     sys.cpu.pc = 0x350;
@@ -853,7 +922,7 @@ int gam4980_load_game_header(const u8 *gam, u32 size)
         0xd0, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00,
-        size & 0xff, (size >> 8) & 0xff, (size >> 16) * 0xff,
+        size & 0xff, (size >> 8) & 0xff, (size >> 16) & 0xff,
         0x3d,
     };
 

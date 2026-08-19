@@ -1,26 +1,37 @@
 #include "Dsys.h"
 #include "gam4980_core.h"
 
-/* ROM caches are completely filled before their first read.  Keeping them
- * outside .bss avoids clearing 68 KiB before the 9288 selector appears. */
+/* ROM caches are completely filled before their first read.  Keep the large
+ * scratch buffers outside .bss so startup only clears the small state block.
+ * The linker appends a file-backed payload tail after .scratch, making the
+ * complete address range part of the KF2 image instead of an unreserved
+ * NOLOAD suffix. */
 #define GAM4980_CACHE_STORAGE \
-    __attribute__((aligned(4), section(".noinit")))
+    __attribute__((aligned(4), section(".scratch")))
 
 #define APP_TITLE "GAM4980"
 #define GAM_SCREEN_WIDTH 320
 #define GAM_SCREEN_HEIGHT 240
 #define SCREEN_PITCH_BYTES 80
-#define VIDEO_BASE 0x003c0000u
+#define SCREEN_FRAME_BYTES (SCREEN_PITCH_BYTES * GAM_SCREEN_HEIGHT)
+#define BBK9288_FIRMWARE_SYS_BLT_FRAME_OFFSET 0x5b0u
 #define VIEW_X 1
 #define VIEW_Y 24
-#define FRAME_CLOCK_HZ 1000u
-#define ESCAPE_QUIT_TICKS FRAME_CLOCK_HZ
 #define FRAME_RATE_HZ 60u
-#define FRAME_BASE_TICKS (FRAME_CLOCK_HZ / FRAME_RATE_HZ)
-#define FRAME_REMAINDER_TICKS (FRAME_CLOCK_HZ % FRAME_RATE_HZ)
-#define MAX_CATCHUP_FRAMES 3u
-#define FRAME_WAKE_TIMER_ID 1
-#define FRAME_WAKE_TIMER_TICKS 2
+#define GUI_TIMER_HZ 50u
+#define FRAME_TIMER_ID 1
+#define FRAME_TIMER_SPEED 20
+#define FRAME_TIMER_GUARD_SPEED 30000
+#define EXIT_HOLD_TIMER_TICKS 20u
+#define RUN_WINDOW_FAILED 0
+#define RUN_WINDOW_CLOSED 1
+#define RUN_WINDOW_GAME_ENDED 2
+
+/* Keep the public 9288 SDK ABI compile-checked.  Its SysBltFrame member is at
+ * +0x59c; the runtime firmware compatibility shift is handled at the call. */
+typedef char T_9288_PublicSysBltFrameOffsetMustBe59c[
+    __builtin_offsetof(T_GUI_RelocationTable, SysBltFrame) == 0x59cu ? 1 : -1
+];
 #define PATH_CAPACITY (MAX_PATH * 2)
 #define FILE_IO_CHUNK 16384u
 #define MAX_GAME_FILES 32
@@ -35,6 +46,10 @@ static const char k_rom_e_path[] = "a:\\gam4980\\E.BIN";
 static const char k_game_root[] = "a:\\gam4980";
 static const char k_game_dir[] = "a:\\gam4980\\";
 static const char k_game_pattern[] = "a:\\gam4980\\*.*";
+static const u8 k_expand_2x_pair[4] = {0xffu, 0xf0u, 0x0fu, 0x00u};
+#ifdef GAM4980_LOAD_DIAGNOSTICS
+static const char k_diag_path[] = "a:\\gam4980\\DIAG.TXT";
+#endif
 static const T_BYTE k_selector_directory[] = "A:\\gam4980\\";
 static const T_BYTE k_selector_title[] = {
     0xc7, 0xeb, 0xd1, 0xa1, 0xd4, 0xf1, 0xd3, 0xce, 0xcf, 0xb7, 0
@@ -45,27 +60,69 @@ static const T_BYTE k_no_games[] = {
 }; /* 没有找到 .gam 文件 (GBK) */
 
 static T_GUI_HWND g_main_window;
+static T_GUI_HDC g_game_hdc;
 static gam4980_buffers_t g_buffers;
 static char g_game_path[PATH_CAPACITY];
 static char g_save_path[PATH_CAPACITY];
 static char g_game_names[MAX_GAME_FILES][GAME_NAME_CAPACITY]
-    __attribute__((aligned(4), section(".noinit")));
+    __attribute__((aligned(4), section(".scratch")));
 static struct ffblk g_find_block
-    __attribute__((aligned(4), section(".noinit")));
+    __attribute__((aligned(4), section(".scratch")));
 static int g_game_count;
 static int g_selector_index;
 static int g_selector_top;
 static int g_selector_done;
 static int g_selector_accepted;
+static int g_selector_enter_armed;
 static u32 g_selector_open_tick;
 static u8 g_static_ram[GAM4980_RAM_SIZE]
-    __attribute__((aligned(4), section(".noinit")));
+    __attribute__((aligned(4), section(".scratch")));
 static FS_FILE *g_rom_files[2];
 static int g_close_requested;
+static int g_game_ended;
 static int g_escape_down;
-static int g_game_ready;
-static u32 g_escape_down_tick;
+static u32 g_exit_hold_timer_ticks;
+static u32 g_timer_frame_phase;
+#ifdef GAM4980_LOAD_DIAGNOSTICS
+static int g_first_frame_logged;
+#endif
+static int g_frame_tick_pending;
+/* The 9288 GUI game interface submits a complete 0x4b00-byte virtual screen. */
+static u8 g_screen_frame[SCREEN_FRAME_BYTES]
+    __attribute__((aligned(4), section(".scratch")));
 static u8 g_scaled_row[SCREEN_PITCH_BYTES] __attribute__((aligned(4)));
+
+typedef void (*T_9288_SysBltFrame)(
+    T_GUI_HDC hdc, unsigned char *virtual_screen
+);
+
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+typedef struct T_GAM4980_MemoryDiagnostic {
+    volatile u32 magic;
+    volatile u32 stage;
+    volatile u32 value_a;
+    volatile u32 value_b;
+    volatile u32 rom_reads;
+    volatile u32 rom_failures;
+    volatile u32 frames;
+    volatile u32 last_rom_offset;
+    volatile u32 last_rom_output;
+    volatile u32 last_rom_size;
+    volatile u32 last_rom_region;
+} T_GAM4980_MemoryDiagnostic;
+
+volatile T_GAM4980_MemoryDiagnostic g_gam4980_memory_diagnostic;
+
+static void memory_diagnostic(u32 stage, u32 value_a, u32 value_b)
+{
+    g_gam4980_memory_diagnostic.magic = 0x47414d44u;
+    g_gam4980_memory_diagnostic.value_a = value_a;
+    g_gam4980_memory_diagnostic.value_b = value_b;
+    g_gam4980_memory_diagnostic.stage = stage;
+}
+#else
+#define memory_diagnostic(stage, value_a, value_b) ((void)0)
+#endif
 
 static int read_rom_bank(
     void *context, u8 region, u32 offset, u8 *out, u32 size
@@ -97,38 +154,9 @@ static u32 tick_elapsed(u32 start, u32 end)
     return end - start;
 }
 
-static u32 system_clock_milliseconds(void)
+static int is_exit_scancode(T_UHWORD scancode)
 {
-    u8 packed_time[6] __attribute__((aligned(2)));
-
-    if (get_tim((SYSTIME *)(void *)packed_time) < 0)
-        return 0;
-    return (u32)packed_time[2] |
-           ((u32)packed_time[3] << 8) |
-           ((u32)packed_time[4] << 16) |
-           ((u32)packed_time[5] << 24);
-}
-
-static int tick_deadline_reached(u32 now, u32 deadline)
-{
-    return (s32)(now - deadline) >= 0;
-}
-
-static void advance_frame_deadline(u32 *deadline, u32 *phase)
-{
-    *deadline += FRAME_BASE_TICKS;
-    *phase += FRAME_REMAINDER_TICKS;
-    if (*phase >= FRAME_RATE_HZ) {
-        *deadline += 1u;
-        *phase -= FRAME_RATE_HZ;
-    }
-}
-
-static void reset_frame_deadline(u32 now, u32 *deadline, u32 *phase)
-{
-    *deadline = now;
-    *phase = 0;
-    advance_frame_deadline(deadline, phase);
+    return scancode == SCANCODE_ESCAPE || scancode == SCANCODE_F12;
 }
 
 static void show_error(const char *text)
@@ -139,6 +167,50 @@ static void show_error(const char *text)
         MB_OK | MB_ICONSTOP
     );
 }
+
+#ifdef GAM4980_LOAD_DIAGNOSTICS
+static char *append_diag_hex(char *out, u32 value, int digits)
+{
+    static const char digits_hex[] = "0123456789ABCDEF";
+    int shift = (digits - 1) * 4;
+
+    while (shift >= 0) {
+        *out++ = digits_hex[(value >> (u32)shift) & 0x0fu];
+        shift -= 4;
+    }
+    return out;
+}
+
+static void write_load_diagnostic(u8 stage, u32 value_a, u32 value_b)
+{
+    char line[36];
+    char *out = line;
+    FS_FILE *file;
+
+    *out++ = 'S';
+    out = append_diag_hex(out, stage, 2);
+    *out++ = ' ';
+    *out++ = 'A';
+    *out++ = '=';
+    out = append_diag_hex(out, value_a, 8);
+    *out++ = ' ';
+    *out++ = 'B';
+    *out++ = '=';
+    out = append_diag_hex(out, value_b, 8);
+    *out++ = '\r';
+    *out++ = '\n';
+
+    file = fs_fopen(k_diag_path, FS_O_WRONLY);
+    if (!file)
+        return;
+    (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+    (void)fs_update(file);
+    fs_fclose(file);
+    (void)fs_flush_cache();
+}
+#else
+#define write_load_diagnostic(stage, value_a, value_b) ((void)0)
+#endif
 
 static void release_buffers(void)
 {
@@ -176,12 +248,14 @@ static int read_exact(FS_FILE *file, u8 *out, u32 size)
 {
     u32 total = 0;
 
+    if (!file || (!out && size))
+        return 0;
     while (total < size) {
         u32 remaining = size - total;
         size_t chunk = remaining > FILE_IO_CHUNK ? FILE_IO_CHUNK : remaining;
         size_t got = fs_fread(out + total, 1, chunk, file);
 
-        if (!got)
+        if (!got || got > remaining)
             return 0;
         total += (u32)got;
     }
@@ -235,14 +309,33 @@ static int read_rom_bank(
     FS_FILE *file;
 
     (void)context;
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+    ++g_gam4980_memory_diagnostic.rom_reads;
+    g_gam4980_memory_diagnostic.last_rom_region = region;
+    g_gam4980_memory_diagnostic.last_rom_offset = offset;
+    g_gam4980_memory_diagnostic.last_rom_output = (u32)(unsigned long)out;
+    g_gam4980_memory_diagnostic.last_rom_size = size;
+#endif
     if (region > GAM4980_ROM_REGION_E ||
-        offset > GAM4980_ROM_SIZE || size > GAM4980_ROM_SIZE - offset)
+        offset > GAM4980_ROM_SIZE || size > GAM4980_ROM_SIZE - offset) {
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+        ++g_gam4980_memory_diagnostic.rom_failures;
+#endif
         return 0;
+    }
     file = g_rom_files[region];
-    if (!file || fs_fseek(file, (long)offset, SEEK_SET) < 0)
+    if (!file || fs_fseek(file, (long)offset, SEEK_SET) < 0) {
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+        ++g_gam4980_memory_diagnostic.rom_failures;
+#endif
         return 0;
-    if (!read_exact(file, out, size))
+    }
+    if (!read_exact(file, out, size)) {
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+        ++g_gam4980_memory_diagnostic.rom_failures;
+#endif
         return 0;
+    }
     return 1;
 }
 
@@ -493,6 +586,13 @@ static T_WORD selector_window_proc(
     switch (message) {
     case MSG_KEYDOWN:
         switch (scancode) {
+        case SCANCODE_ENTER:
+        case SCANCODE_KEYPADENTER:
+            if (g_game_count > 0 && tick_elapsed(
+                    g_selector_open_tick, (u32)fnGUI_GetTickCount()
+                ) >= SELECTOR_ACCEPT_DELAY_TICKS)
+                g_selector_enter_armed = 1;
+            break;
         case SCANCODE_CURSORUP:
         case SCANCODE_CURSORBLOCKUP:
             selector_move(window, -1);
@@ -507,21 +607,29 @@ static T_WORD selector_window_proc(
         case SCANCODE_PAGEDOWN:
             selector_move(window, SELECTOR_VISIBLE_ROWS);
             break;
-        case SCANCODE_ENTER:
-        case SCANCODE_KEYPADENTER:
-            if (g_game_count > 0 && tick_elapsed(
-                    g_selector_open_tick, (u32)fnGUI_GetTickCount()
-                ) >= SELECTOR_ACCEPT_DELAY_TICKS) {
-                g_selector_accepted = 1;
-                g_selector_done = 1;
-            }
-            break;
         case SCANCODE_ESCAPE:
+        case SCANCODE_F12:
             g_selector_done = 1;
             break;
         default:
             break;
         }
+        return 0;
+    case MSG_KEYUP:
+        if ((scancode == SCANCODE_ENTER ||
+             scancode == SCANCODE_KEYPADENTER) &&
+            g_selector_enter_armed) {
+            /* Require a fresh press inside the selector, then leave only
+             * after that Enter is physically released.  This prevents the
+             * launch key from passing through and keeps its release edge from
+             * racing window teardown and the first NAND reads. */
+            g_selector_enter_armed = 0;
+            g_selector_accepted = 1;
+            g_selector_done = 1;
+        }
+        return 0;
+    case MSG_TIMER:
+        /* The selector has no periodic work. */
         return 0;
     case MSG_ERASEBKGND:
         return 0;
@@ -546,6 +654,7 @@ static int select_game(void)
     g_selector_top = 0;
     g_selector_done = 0;
     g_selector_accepted = 0;
+    g_selector_enter_armed = 0;
     memset(&info, 0, sizeof(info));
     info.dwStyle = WS_VISIBLE | WS_CAPTION;
     info.dwExStyle = WS_EX_NONE;
@@ -596,6 +705,7 @@ static int load_game(const char *path)
         return 0;
     }
     size = fs_ftell(file);
+    write_load_diagnostic(0x08u, (u32)size, 0u);
     if (size < (long)GAM4980_GAME_HEADER_SIZE ||
         size > (long)GAM4980_GAME_MAX_SIZE ||
         fs_fseek(file, 0, SEEK_SET) < 0 ||
@@ -606,34 +716,50 @@ static int load_game(const char *path)
         return 0;
     }
     fs_fclose(file);
+    write_load_diagnostic(0x09u, (u32)size, 0u);
     if (gam4980_load_game_header(header, (u32)size) <= 0 ||
         !make_save_path(path))
         return 0;
     load_save();
     gam4980_save_mark_clean();
+    write_load_diagnostic(0x0au, (u32)size, 0u);
     return 1;
+}
+
+static void submit_screen_frame(void)
+{
+    T_9288_SysBltFrame sys_blt_frame;
+
+    if (!g_main_window || !g_game_hdc)
+        return;
+    /* The 9288 V1.5 firmware table contains five private entries before the
+     * SDK's late game-API block.  Thus the public SDK's +0x59c signature is
+     * implemented at firmware slot +0x5b0.  The official routine at that slot
+     * performs two 0x4b00-byte transfers; keep the SDK signature but use the
+     * firmware ABI position. */
+    sys_blt_frame = *(T_9288_SysBltFrame *)(void *)(
+        (u8 *)(void *)tpDL_GUITable + BBK9288_FIRMWARE_SYS_BLT_FRAME_OFFSET
+    );
+    if (sys_blt_frame) {
+        sys_blt_frame(g_game_hdc, g_screen_frame);
+        /* Thunder Fighter follows the frame copy with this exact call so the
+         * GUI paint path transfers the updated client DC to the LCD. */
+        (void)fnGUI_InvalidateRect(
+            g_main_window, (const T_GUI_Rect *)0, (T_BOOL)0
+        );
+    }
 }
 
 static void clear_screen(void)
 {
-    volatile u32 *video = (volatile u32 *)VIDEO_BASE;
-    u32 count = (GAM_SCREEN_WIDTH * GAM_SCREEN_HEIGHT * 2u) / 32u;
-
-    while (count--)
-        *video++ = 0xffffffffu;
+    memset(g_screen_frame, 0xff, sizeof(g_screen_frame));
+    submit_screen_frame();
 }
 
-static void clear_2bpp_pixel(u8 *row, int x)
+static void copy_row_to_screen_frame(int y, const u8 *row)
 {
-    u32 shift = (u32)(3 - (x & 3)) * 2u;
-
-    row[x >> 2] &= (u8)~(3u << shift);
-}
-
-static void copy_row_to_video(int y, const u8 *row)
-{
-    volatile u32 *destination =
-        (volatile u32 *)(VIDEO_BASE + (u32)y * SCREEN_PITCH_BYTES);
+    u32 *destination =
+        (u32 *)(void *)(g_screen_frame + (u32)y * SCREEN_PITCH_BYTES);
     const u32 *source = (const u32 *)row;
     int index;
 
@@ -650,20 +776,36 @@ static void present_2x(const u8 *packed)
     for (source_y = 0; source_y < GAM4980_LCD_HEIGHT; ++source_y) {
         const u8 *source =
             packed + source_y * GAM4980_LCD_PACKED_STRIDE;
-        int source_x;
+        u8 carry;
+        int index;
 
-        memset(g_scaled_row, 0xff, sizeof(g_scaled_row));
-        for (source_x = 0; source_x < GAM4980_LCD_WIDTH; ++source_x) {
-            if (source[source_x >> 3] & (0x80u >> (source_x & 7))) {
-                int destination_x = VIEW_X + source_x * 2;
+        /* Each input bit expands to two 2-bpp pixels.  Two source bits
+         * therefore become one output byte; this removes the old per-pixel
+         * variable shifts from the hottest part of presentation. */
+        for (index = 0; index < GAM4980_LCD_PACKED_STRIDE; ++index) {
+            u8 value = source[index];
+            u8 *out = g_scaled_row + index * 4;
 
-                clear_2bpp_pixel(g_scaled_row, destination_x);
-                clear_2bpp_pixel(g_scaled_row, destination_x + 1);
-            }
+            out[0] = k_expand_2x_pair[(value >> 6) & 3u];
+            out[1] = k_expand_2x_pair[(value >> 4) & 3u];
+            out[2] = k_expand_2x_pair[(value >> 2) & 3u];
+            out[3] = k_expand_2x_pair[value & 3u];
         }
-        copy_row_to_video(VIEW_Y + source_y * 2, g_scaled_row);
-        copy_row_to_video(VIEW_Y + source_y * 2 + 1, g_scaled_row);
+        /* The packed stride contains one padding source bit.  Make its two
+         * pixels white, then shift the expanded row right by VIEW_X=1 so the
+         * 318-pixel image is centered in the 320-pixel display. */
+        g_scaled_row[SCREEN_PITCH_BYTES - 1] |= 0x0fu;
+        carry = 0xc0u;
+        for (index = 0; index < SCREEN_PITCH_BYTES; ++index) {
+            u8 value = g_scaled_row[index];
+
+            g_scaled_row[index] = (u8)(carry | (value >> 2));
+            carry = (u8)((value & 3u) << 6);
+        }
+        copy_row_to_screen_frame(VIEW_Y + source_y * 2, g_scaled_row);
+        copy_row_to_screen_frame(VIEW_Y + source_y * 2 + 1, g_scaled_row);
     }
+    submit_screen_frame();
 }
 
 static u8 map_scancode(T_UHWORD scancode)
@@ -734,18 +876,40 @@ static u8 map_scancode(T_UHWORD scancode)
     case SCANCODE_F9: return GAM4980_KEY_SEARCH;
     case SCANCODE_F10: return GAM4980_KEY_DOWNLOAD;
     case SCANCODE_F11: return GAM4980_KEY_HELP;
-    case SCANCODE_F12: return GAM4980_KEY_EXIT;
     default: return 0xffu;
     }
 }
 
-static void poll_game_combo_keys(void)
+static void run_timer_frame(void)
 {
-    u8 state[6];
+    u32 frames_this_tick;
 
-    memset(state, 0, sizeof(state));
-    /* The 9288 GUI requires this SDK call to pump the keyboard hardware. */
-    (void)fnGUI_ScanKeyForGameComboKeys(state);
+    /* Thunder Fighter uses timer id 1 with speed 20.  The 10 ms-quantized
+     * 9288 GUI timer therefore delivers at 50 Hz; advance a 60 Hz core in a
+     * 1, 1, 1, 1, 2 frame pattern. */
+    g_timer_frame_phase += FRAME_RATE_HZ;
+    frames_this_tick = g_timer_frame_phase / GUI_TIMER_HZ;
+    g_timer_frame_phase %= GUI_TIMER_HZ;
+    while (frames_this_tick-- != 0u) {
+        gam4980_step_frame();
+#ifdef GAM4980_MEMORY_DIAGNOSTICS
+        ++g_gam4980_memory_diagnostic.frames;
+#endif
+#ifdef GAM4980_LOAD_DIAGNOSTICS
+        if (!g_first_frame_logged) {
+            write_load_diagnostic(0x0du, 0u, 0u);
+            g_first_frame_logged = 1;
+        }
+#endif
+        if (gam4980_shutdown_requested()) {
+            g_game_ended = 1;
+            break;
+        }
+    }
+    if (gam4980_render_frame())
+        present_2x(gam4980_packed_frame());
+    if (g_escape_down && ++g_exit_hold_timer_ticks >= EXIT_HOLD_TIMER_TICKS)
+        g_close_requested = 1;
 }
 
 static T_WORD gam_window_proc(
@@ -757,14 +921,10 @@ static T_WORD gam_window_proc(
     (void)lparam;
     switch (message) {
     case MSG_KEYDOWN:
-        if (scancode == SCANCODE_ESCAPE) {
+        if (is_exit_scancode(scancode)) {
             if (!g_escape_down) {
                 g_escape_down = 1;
-                g_escape_down_tick = system_clock_milliseconds();
-            } else if (tick_elapsed(
-                           g_escape_down_tick, system_clock_milliseconds()
-                       ) >= ESCAPE_QUIT_TICKS) {
-                g_close_requested = 1;
+                g_exit_hold_timer_ticks = 0;
             }
         } else {
             u8 key = map_scancode(scancode);
@@ -774,27 +934,33 @@ static T_WORD gam_window_proc(
         }
         return 0;
     case MSG_KEYUP:
-        if (scancode == SCANCODE_ESCAPE && g_escape_down) {
-            if (tick_elapsed(
-                    g_escape_down_tick, system_clock_milliseconds()
-                ) < ESCAPE_QUIT_TICKS)
-                gam4980_key_down(GAM4980_KEY_EXIT);
-            else {
-                g_close_requested = 1;
-            }
+        if (is_exit_scancode(scancode) && g_escape_down) {
+            gam4980_key_down(GAM4980_KEY_EXIT);
             g_escape_down = 0;
+            g_exit_hold_timer_ticks = 0;
         }
+        return 0;
+    case MSG_TIMER:
+        /* Keep the GUI callback bounded.  The interpreted frame is slower than
+         * Thunder Fighter's native frame, so temporarily move the same timer
+         * deadline away while the outer message loop executes it. */
+        if (!g_frame_tick_pending) {
+            (void)fnGUI_ResetTimer(
+                window, FRAME_TIMER_ID, FRAME_TIMER_GUARD_SPEED
+            );
+            g_frame_tick_pending = 1;
+        }
+        /* MSG_TIMER is fully consumed here.  Passing an already-handled timer
+         * to DefaultMainWinProc can schedule an unnecessary window repaint;
+         * on 9288 that repaint uses the LCD HSDMA path. */
         return 0;
     case MSG_ERASEBKGND:
         return 0;
-    case MSG_PAINT: {
-        T_WORD result =
-            fnGUI_DefaultMainWinProc(window, message, wparam, lparam);
-
-        if (g_game_ready)
-            present_2x(gam4980_packed_frame());
-        return result;
-    }
+    case MSG_PAINT:
+        /* SysBltFrame already populated the client DC.  DefaultMainWinProc
+         * performs the pending GUI/LCD transfer; resubmitting here would
+         * invalidate the window again and create a permanent paint loop. */
+        return fnGUI_DefaultMainWinProc(window, message, wparam, lparam);
     case MSG_CLOSE:
         g_close_requested = 1;
         return 0;
@@ -836,6 +1002,11 @@ static int create_emulator_window(void)
     }
     (void)fnGUI_SetActiveWindow(g_main_window);
     (void)fnGUI_SetFocus(g_main_window);
+    g_game_hdc = fnGUI_GetClientDC(g_main_window);
+    if (!g_game_hdc) {
+        destroy_emulator_window();
+        return 0;
+    }
     return 1;
 }
 
@@ -857,10 +1028,15 @@ static void destroy_emulator_window(void)
 
     if (!window)
         return;
-    g_game_ready = 0;
+    if (g_game_hdc) {
+        fnGUI_ReleaseDC(g_game_hdc);
+        g_game_hdc = 0;
+    }
     g_main_window = 0;
     fnGUI_DestroyMainWindow(window);
-    fnGUI_PostQuitMessage(window);
+    /* App_Main may open the selector again after the emulated game exits.
+     * PostQuitMessage is thread-wide on 9288, so posting it here would make
+     * that new selector consume the stale quit and close the whole app. */
     fnGUI_ThrowAwayMessages(window);
     fnGUI_MainWindowCleanup(window);
 }
@@ -868,84 +1044,77 @@ static void destroy_emulator_window(void)
 static int run_emulator_window(void)
 {
     T_GUI_Msg message;
-    u32 frame_deadline;
-    u32 frame_phase;
 
     if (!g_main_window)
         return 0;
-    g_game_ready = 1;
+    write_load_diagnostic(0x0bu, 0u, 0u);
     clear_screen();
     g_close_requested = 0;
+    g_game_ended = 0;
     g_escape_down = 0;
+    g_exit_hold_timer_ticks = 0;
+    g_timer_frame_phase = 0;
+#ifdef GAM4980_LOAD_DIAGNOSTICS
+    g_first_frame_logged = 0;
+#endif
+    g_frame_tick_pending = 0;
     (void)gam4980_render_frame();
     present_2x(gam4980_packed_frame());
-    reset_frame_deadline(system_clock_milliseconds(), &frame_deadline,
-                         &frame_phase);
-    if (!fnGUI_SetTimer(
-            g_main_window, FRAME_WAKE_TIMER_ID, FRAME_WAKE_TIMER_TICKS
-        )) {
+    write_load_diagnostic(0x0cu, 0u, 0u);
+    if (!fnGUI_SetTimer(g_main_window, FRAME_TIMER_ID, FRAME_TIMER_SPEED)) {
         destroy_emulator_window();
         return 0;
     }
 
-    while (!g_close_requested && !gam4980_shutdown_requested()) {
-        u32 now;
-        u32 catchup_frames = 0;
-
-        if (!fnGUI_GetMessage(&message, g_main_window)) {
+    while (!g_close_requested && !g_game_ended) {
+        /* Thunder Fighter pumps the global GUI queue during gameplay.  Timer
+         * and system messages are not restricted to the game's window. */
+        if (!fnGUI_GetMessage(&message, 0)) {
             g_close_requested = 1;
             break;
         }
         fnGUI_TranslateMessage(&message);
         fnGUI_DispatchMessage(&message);
-        poll_game_combo_keys();
         if (g_close_requested)
             break;
-
-        now = system_clock_milliseconds();
-        while (tick_deadline_reached(now, frame_deadline) &&
-               catchup_frames < MAX_CATCHUP_FRAMES) {
-            gam4980_step_frame();
-            advance_frame_deadline(&frame_deadline, &frame_phase);
-            ++catchup_frames;
-        }
-        if (catchup_frames != 0u) {
-            if (gam4980_render_frame())
-                present_2x(gam4980_packed_frame());
-            if (gam4980_shutdown_requested())
-                g_close_requested = 1;
-            if (g_escape_down && tick_elapsed(
-                    g_escape_down_tick, system_clock_milliseconds()
-                ) >= ESCAPE_QUIT_TICKS) {
+        if (g_frame_tick_pending) {
+            g_frame_tick_pending = 0;
+            run_timer_frame();
+            if (!g_close_requested && !fnGUI_ResetTimer(
+                    g_main_window, FRAME_TIMER_ID, FRAME_TIMER_SPEED
+                )) {
                 g_close_requested = 1;
             }
         }
-        if (catchup_frames == MAX_CATCHUP_FRAMES &&
-            tick_deadline_reached(now, frame_deadline)) {
-            reset_frame_deadline(now, &frame_deadline, &frame_phase);
-        }
     }
 
-    (void)fnGUI_KillTimer(g_main_window, FRAME_WAKE_TIMER_ID);
+    (void)fnGUI_KillTimer(g_main_window, FRAME_TIMER_ID);
     destroy_emulator_window();
-    return 1;
+    if (g_game_ended && !g_close_requested)
+        return RUN_WINDOW_GAME_ENDED;
+    return RUN_WINDOW_CLOSED;
 }
 
-T_WORD App_Main(void)
+static int run_selected_game(void)
 {
     int core_status;
-    int initialized = 0;
     int rom_status;
+    int run_status;
     long game_size;
 
-    (void)fs_mkdir(k_game_root);
-    if (!select_game())
-        return 0;
+    memory_diagnostic(0x01u, 0u, 0u);
+    write_load_diagnostic(0x01u, 0u, 0u);
     if (!create_emulator_window()) {
         show_error("Could not create the GAM4980 window.");
         return -1;
     }
+    memory_diagnostic(0x02u, (u32)(unsigned long)g_main_window, 0u);
+    write_load_diagnostic(0x02u, (u32)(unsigned long)g_main_window, 0u);
     game_size = get_game_size(g_game_path);
+    write_load_diagnostic(
+        0x03u, (u32)game_size,
+        (0x15000u + (u32)game_size + 0xfffu) & ~0xfffu
+    );
     if (game_size < (long)GAM4980_GAME_HEADER_SIZE ||
         game_size > (long)GAM4980_GAME_MAX_SIZE) {
         show_error("The selected GAM file has an invalid size.");
@@ -953,10 +1122,17 @@ T_WORD App_Main(void)
         return -1;
     }
     if (!allocate_buffers((u32)game_size)) {
+        write_load_diagnostic(0xe4u, (u32)game_size, 0u);
         show_error("Not enough memory for the selected GAM file.");
         destroy_emulator_window();
         return -1;
     }
+    memory_diagnostic(
+        0x03u, (u32)(unsigned long)g_buffers.flash, g_buffers.flash_size
+    );
+    write_load_diagnostic(
+        0x04u, (u32)(unsigned long)g_buffers.flash, g_buffers.flash_size
+    );
     rom_status = open_rom_file(GAM4980_ROM_REGION_8, k_rom_8_path);
     if (rom_status == 0)
         rom_status = open_rom_file(GAM4980_ROM_REGION_E, k_rom_e_path);
@@ -969,32 +1145,56 @@ T_WORD App_Main(void)
         destroy_emulator_window();
         return -2;
     }
+    memory_diagnostic(0x04u, 0u, 0u);
+    write_load_diagnostic(0x05u, 0u, 0u);
+    write_load_diagnostic(0x06u, g_buffers.flash_size, 0u);
     core_status = gam4980_init(&g_buffers);
     if (core_status <= 0) {
         char diagnostic[] = "Core initialization stage X failed.";
 
+        write_load_diagnostic(0xe7u, (u32)(-core_status), 0u);
         diagnostic[26] = (char)('0' - core_status);
         show_error(diagnostic);
         release_buffers();
         destroy_emulator_window();
         return -3;
     }
-    initialized = 1;
+    memory_diagnostic(0x05u, (u32)core_status, 0u);
+    write_load_diagnostic(0x07u, (u32)core_status, 0u);
     if (!load_game(g_game_path)) {
         show_error("The selected GAM file is invalid or unreadable.");
         release_buffers();
         destroy_emulator_window();
         return -4;
     }
-    if (!run_emulator_window()) {
+    memory_diagnostic(0x06u, (u32)game_size, 0u);
+    run_status = run_emulator_window();
+    if (run_status == RUN_WINDOW_FAILED) {
         show_error("Could not create the GAM4980 window.");
         release_buffers();
         return -5;
     }
-    if (initialized)
-        write_save();
+    write_save();
     release_buffers();
-    return 0;
+    return run_status;
+}
+
+T_WORD App_Main(void)
+{
+    int run_status;
+
+    (void)fs_mkdir(k_game_root);
+    memory_diagnostic(0x00u, 0u, 0u);
+    write_load_diagnostic(0x00u, 0u, 0u);
+    for (;;) {
+        if (!select_game())
+            return 0;
+        run_status = run_selected_game();
+        if (run_status < 0)
+            return (T_WORD)run_status;
+        if (run_status != RUN_WINDOW_GAME_ENDED)
+            return 0;
+    }
 }
 
 /* The upstream core includes the instruction interpreter as one unit. */
