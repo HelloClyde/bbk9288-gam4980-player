@@ -18,10 +18,9 @@
 #define VIEW_X 1
 #define VIEW_Y 24
 #define FRAME_RATE_HZ 60u
-#define GUI_TIMER_HZ 50u
+#define GUI_TIMER_HZ 20u
 #define FRAME_TIMER_ID 1
 #define FRAME_TIMER_SPEED 20
-#define FRAME_TIMER_GUARD_SPEED 30000
 #define EXIT_HOLD_TIMER_TICKS 20u
 
 /* Keep the public 9288 SDK ABI compile-checked.  Its SysBltFrame member is at
@@ -36,7 +35,7 @@ typedef char T_9288_PublicSysBltFrameOffsetMustBe59c[
 #define SELECTOR_ROW_HEIGHT 18
 #define SELECTOR_FIRST_ROW_Y 20
 #define SELECTOR_VISIBLE_ROWS 11
-#define SELECTOR_ACCEPT_DELAY_TICKS 12u
+#define SELECTOR_ACCEPT_DELAY_TICKS 100u
 
 static const char k_rom_8_path[] = "a:\\gam4980\\8.BIN";
 static const char k_rom_e_path[] = "a:\\gam4980\\E.BIN";
@@ -880,9 +879,9 @@ static void run_timer_frame(void)
 {
     u32 frames_this_tick;
 
-    /* Thunder Fighter uses timer id 1 with speed 20.  The 10 ms-quantized
-     * 9288 GUI timer therefore delivers at 50 Hz; advance a 60 Hz core in a
-     * 1, 1, 1, 1, 2 frame pattern. */
+    /* On 9288, GUI timer speed 20 delivers about 20 MSG_TIMER events per
+     * second.  Advance three 60 Hz guest frames per event; the phase form is
+     * retained so the relation stays explicit if either rate changes. */
     g_timer_frame_phase += FRAME_RATE_HZ;
     frames_this_tick = g_timer_frame_phase / GUI_TIMER_HZ;
     g_timer_frame_phase %= GUI_TIMER_HZ;
@@ -935,15 +934,10 @@ static T_WORD gam_window_proc(
         }
         return 0;
     case MSG_TIMER:
-        /* Keep the GUI callback bounded.  The interpreted frame is slower than
-         * Thunder Fighter's native frame, so temporarily move the same timer
-         * deadline away while the outer message loop executes it. */
-        if (!g_frame_tick_pending) {
-            (void)fnGUI_ResetTimer(
-                window, FRAME_TIMER_ID, FRAME_TIMER_GUARD_SPEED
-            );
-            g_frame_tick_pending = 1;
-        }
+        /* Keep the callback bounded and collapse duplicate timer messages.
+         * The GUI timer remains periodic, so its wait overlaps the interpreted
+         * work instead of adding another delay after every completed batch. */
+        g_frame_tick_pending = 1;
         /* MSG_TIMER is fully consumed here.  Passing an already-handled timer
          * to DefaultMainWinProc can schedule an unnecessary window repaint;
          * on 9288 that repaint uses the LCD HSDMA path. */
@@ -1071,11 +1065,6 @@ static int run_emulator_window(void)
         if (g_frame_tick_pending) {
             g_frame_tick_pending = 0;
             run_timer_frame();
-            if (!g_close_requested && !fnGUI_ResetTimer(
-                    g_main_window, FRAME_TIMER_ID, FRAME_TIMER_SPEED
-                )) {
-                g_close_requested = 1;
-            }
         }
     }
 

@@ -47,11 +47,11 @@ A:\gam4980\你的游戏.gam
 - 两片 2 MiB ROM 使用 4 KiB bank 缓存，Flash 按游戏实际大小分配，适配
   9288 的 8 MiB SDRAM。
 - 使用 9288 原生 GUI `MSG_TIMER`（ID 1、speed 20）驱动主循环，并按
-  50 Hz 到 60 Hz 的 1、1、1、1、2 节奏推进模拟器。
+  实测约 20 Hz 的消息频率，每次推进 3 个 60 Hz 客机帧。
 - 仿照 9288 版《雷霆战机》，以 `SysBltFrame` 后接 `InvalidateRect` 的顺序
   提交离屏画面，不直接写显存。
 - 6502 解释器默认使用 computed-goto 和直接栈访问；在 9288 模拟器中，
-  《伏魔记》实测约 12–23 帧/秒。
+  修正 Timer 相位换算后《伏魔记》实测约 58 帧/秒。
 
 ## 仓库结构
 
@@ -68,6 +68,9 @@ toolchain/                  9288 GNU33 ABI 的 S1C33 LLVM 补丁
 旧 9588 前端和打包脚本不属于本仓库；上游实现仍可在
 [`gam4980-player-for9588`](https://github.com/HelloClyde/gam4980-player-for9588)
 获取。
+
+本次移植中的 SDK/ABI、内存、KF2、GUI 刷屏、Timer、输入和真机验证经验
+已整理到 [`docs/9288-porting-lessons.md`](docs/9288-porting-lessons.md)。
 
 ## 安装
 
