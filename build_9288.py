@@ -318,8 +318,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--optimization",
         choices=("2", "3", "s", "z"),
-        default="s",
-        help="compiler optimization level (default: s, fastest in the 9288 emulator)",
+        default="2",
+        help=(
+            "compiler optimization level "
+            "(default: 2, preferred for the physical S1C33 CPU)"
+        ),
     )
     return parser.parse_args()
 

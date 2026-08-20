@@ -85,7 +85,12 @@ static int g_frame_tick_pending;
 /* The 9288 GUI game interface submits a complete 0x4b00-byte virtual screen. */
 static u8 g_screen_frame[SCREEN_FRAME_BYTES]
     __attribute__((aligned(4), section(".scratch")));
-static u8 g_scaled_row[SCREEN_PITCH_BYTES] __attribute__((aligned(4)));
+/* Each entry expands one packed 1-bpp source byte into four already aligned
+ * 2-bpp output bytes.  The first index selects the two-bit carry from the
+ * preceding source byte (black or white).  Building this small table once
+ * lets presentation expand and duplicate a row in a single pass. */
+static u32 g_expand_2x_shifted[2][256]
+    __attribute__((aligned(4), section(".scratch")));
 
 typedef void (*T_9288_SysBltFrame)(
     T_GUI_HDC hdc, unsigned char *virtual_screen
@@ -751,15 +756,32 @@ static void clear_screen(void)
     submit_screen_frame();
 }
 
-static void copy_row_to_screen_frame(int y, const u8 *row)
+static void init_screen_expansion(void)
 {
-    u32 *destination =
-        (u32 *)(void *)(g_screen_frame + (u32)y * SCREEN_PITCH_BYTES);
-    const u32 *source = (const u32 *)row;
-    int index;
+    int incoming_white;
+    int value;
 
-    for (index = 0; index < SCREEN_PITCH_BYTES / 4; ++index)
-        destination[index] = source[index];
+    for (incoming_white = 0; incoming_white < 2; ++incoming_white) {
+        for (value = 0; value < 256; ++value) {
+            u8 raw[4];
+            u8 *output = (u8 *)(void *)&g_expand_2x_shifted[
+                incoming_white
+            ][value];
+            u8 carry = incoming_white ? 0xc0u : 0u;
+            int index;
+
+            raw[0] = k_expand_2x_pair[((u8)value >> 6) & 3u];
+            raw[1] = k_expand_2x_pair[((u8)value >> 4) & 3u];
+            raw[2] = k_expand_2x_pair[((u8)value >> 2) & 3u];
+            raw[3] = k_expand_2x_pair[(u8)value & 3u];
+            for (index = 0; index < 4; ++index) {
+                u8 expanded = raw[index];
+
+                output[index] = (u8)(carry | (expanded >> 2));
+                carry = (u8)((expanded & 3u) << 6);
+            }
+        }
+    }
 }
 
 static void present_2x(const u8 *packed)
@@ -771,34 +793,30 @@ static void present_2x(const u8 *packed)
     for (source_y = 0; source_y < GAM4980_LCD_HEIGHT; ++source_y) {
         const u8 *source =
             packed + source_y * GAM4980_LCD_PACKED_STRIDE;
-        u8 carry;
+        u32 *destination_0 = (u32 *)(void *)(
+            g_screen_frame +
+            (u32)(VIEW_Y + source_y * 2) * SCREEN_PITCH_BYTES
+        );
+        u32 *destination_1 = destination_0 + SCREEN_PITCH_BYTES / 4;
+        int incoming_white = 1;
         int index;
 
-        /* Each input bit expands to two 2-bpp pixels.  Two source bits
-         * therefore become one output byte; this removes the old per-pixel
-         * variable shifts from the hottest part of presentation. */
+        /* The table folds together 1-bpp -> 2-bpp expansion and the two-bit
+         * shift for the one-pixel left margin.  Store the same word into both
+         * destination rows to perform vertical 2x scaling at the same time. */
         for (index = 0; index < GAM4980_LCD_PACKED_STRIDE; ++index) {
             u8 value = source[index];
-            u8 *out = g_scaled_row + index * 4;
+            u32 expanded;
 
-            out[0] = k_expand_2x_pair[(value >> 6) & 3u];
-            out[1] = k_expand_2x_pair[(value >> 4) & 3u];
-            out[2] = k_expand_2x_pair[(value >> 2) & 3u];
-            out[3] = k_expand_2x_pair[value & 3u];
+            /* The last packed bit is padding.  Forcing it to zero produces
+             * the white one-pixel right margin after the horizontal shift. */
+            if (index == GAM4980_LCD_PACKED_STRIDE - 1)
+                value &= 0xfeu;
+            expanded = g_expand_2x_shifted[incoming_white][value];
+            destination_0[index] = expanded;
+            destination_1[index] = expanded;
+            incoming_white = (value & 1u) == 0u;
         }
-        /* The packed stride contains one padding source bit.  Make its two
-         * pixels white, then shift the expanded row right by VIEW_X=1 so the
-         * 318-pixel image is centered in the 320-pixel display. */
-        g_scaled_row[SCREEN_PITCH_BYTES - 1] |= 0x0fu;
-        carry = 0xc0u;
-        for (index = 0; index < SCREEN_PITCH_BYTES; ++index) {
-            u8 value = g_scaled_row[index];
-
-            g_scaled_row[index] = (u8)(carry | (value >> 2));
-            carry = (u8)((value & 3u) << 6);
-        }
-        copy_row_to_screen_frame(VIEW_Y + source_y * 2, g_scaled_row);
-        copy_row_to_screen_frame(VIEW_Y + source_y * 2 + 1, g_scaled_row);
     }
     submit_screen_frame();
 }
@@ -1034,6 +1052,7 @@ static int run_emulator_window(void)
     if (!g_main_window)
         return 0;
     write_load_diagnostic(0x0bu, 0u, 0u);
+    init_screen_expansion();
     clear_screen();
     g_close_requested = 0;
     g_escape_down = 0;
