@@ -1096,47 +1096,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _61:
     ea = READ16W((0xff & (READX8(pc) + ix)));
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(6);
-    NEXT;
+    goto _adc;
   _62:
     ea = pc;
     pc = (pc + 1);
@@ -1155,47 +1117,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _65:
     ea = READX8(pc);
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(3);
-    NEXT;
+    goto _adc;
   _66:
     ea = READX8(pc);
     pc = (pc + 1);
@@ -1221,47 +1145,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _69:
     ea = pc;
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(2);
-    NEXT;
+    goto _adc;
   _6a:
     dt = (ac & 0x01);
     ac = ((0x80 * CARRY) | (ac >> 1));
@@ -1281,47 +1167,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _6d:
     ea = READX16(pc);
     pc = (pc + 2);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _adc;
   _6e:
     ea = READX16(pc);
     pc = (pc + 2);
@@ -1361,47 +1209,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     pc = (pc + 1);
     ea = (et + iy);
     CYCLES((!!(0xff00 & (et ^ ea))));
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(5);
-    NEXT;
+    goto _adc;
   _72:
     ea = READ16W((READX8(pc)));
     pc = (pc + 1);
@@ -1458,47 +1268,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _75:
     ea = ((ix + READX8(pc)) & 0xff);
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _adc;
   _76:
     ea = ((ix + READX8(pc)) & 0xff);
     pc = (pc + 1);
@@ -1526,47 +1298,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     ea = (et + iy);
     pc = (pc + 2);
     CYCLES((!!(0xff00 & (et ^ ea))));
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      {
-        uint8_t vu = (dt & 0x0f);
-        uint8_t vt = ((dt & 0xf0) >> 4);
-        uint8_t au = (ac & 0x0f);
-        uint8_t at = ((ac & 0xf0) >> 4);
-        uint8_t units = (vu + au + CARRY);
-        uint8_t tens = (vt + at);
-        uint8_t tc = 0;
-        if (units > 0x09) {
-          tc = 1;
-          tens = (tens + 0x01);
-          units = (units + 0x06);
-        };
-        if (tens > 0x09) {
-          tens += 0x06;
-        };
-        if (at & 0x08) {
-          at = (at | 0xf0);
-        };
-        if (vt & 0x08) {
-          vt = (vt | 0xf0);
-        };
-        {
-          int8_t res = ((int8_t)((at + vt + tc)));
-          SET_V(((res < -8) || (res > 7)));
-          SET_NZ((ac = ((tens << 4) | (units & 0x0f))));
-        };
-        SET_C((tens & 0xf0));
-      };
-    } else {
-      dt = READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      SET_NZ((ac = ((uint8_t)(et))));
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _adc;
   _7a:
     iy = POP();
     SET_NZ(iy);
@@ -1586,9 +1320,13 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     ea = (et + ix);
     pc = (pc + 2);
     CYCLES((!!(0xff00 & (et ^ ea))));
+    dt = READ8(ea);
+    CYCLES(4);
+    goto _adc;
+  /* Share the large decimal/binary arithmetic tail across all ADC modes. */
+  _adc:
     if (DECIMAL_p) {
       CYCLES(1);
-      dt = READ8(ea);
       {
         uint8_t vu = (dt & 0x0f);
         uint8_t vt = ((dt & 0xf0) >> 4);
@@ -1619,13 +1357,11 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
         SET_C((tens & 0xf0));
       };
     } else {
-      dt = READ8(ea);
       et = (ac + dt + CARRY);
       SET_C((et > 0xff));
       SET_V(((ac ^ et) & (dt ^ et) & 0x80));
       SET_NZ((ac = ((uint8_t)(et))));
     };
-    CYCLES(4);
     NEXT;
   _7e:
     et = READX16(pc);
@@ -2331,31 +2067,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _e1:
     ea = READ16W((0xff & (READX8(pc) + ix)));
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(6);
-    NEXT;
+    goto _sbc;
   _e2:
     ea = pc;
     pc = (pc + 1);
@@ -2377,31 +2091,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _e5:
     ea = READX8(pc);
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(3);
-    NEXT;
+    goto _sbc;
   _e6:
     ea = READX8(pc);
     pc = (pc + 1);
@@ -2425,31 +2117,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _e9:
     ea = pc;
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(2);
-    NEXT;
+    goto _sbc;
   _ea:
     CYCLES(2);
     NEXT;
@@ -2468,31 +2138,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _ed:
     ea = READX16(pc);
     pc = (pc + 2);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _sbc;
   _ee:
     ea = READX16(pc);
     pc = (pc + 2);
@@ -2529,31 +2177,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     pc = (pc + 1);
     ea = (et + iy);
     CYCLES((!!(0xff00 & (et ^ ea))));
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(5);
-    NEXT;
+    goto _sbc;
   _f2:
     ea = READ16W((READX8(pc)));
     pc = (pc + 1);
@@ -2594,31 +2220,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
   _f5:
     ea = ((ix + READX8(pc)) & 0xff);
     pc = (pc + 1);
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _sbc;
   _f6:
     ea = ((ix + READX8(pc)) & 0xff);
     pc = (pc + 1);
@@ -2643,31 +2247,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     ea = (et + iy);
     pc = (pc + 2);
     CYCLES((!!(0xff00 & (et ^ ea))));
-    if (DECIMAL_p) {
-      CYCLES(1);
-      dt = READ8(ea);
-      et = (ac + ~dt + CARRY);
-      ea = (ac - dt - !CARRY);
-      if (ea & 0x8000) {
-        ea -= 0x60;
-      };
-      if (((ac & 0x0f) - (dt & 0x0f) - !CARRY) & 0x8000) {
-        ea -= 0x06;
-      };
-      SET_V(((ac ^ et) & (~dt ^ et) & 0x80));
-      SET_NZ(((uint8_t)(ea)));
-      SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
-      ac = (ea & 0xff);
-    } else {
-      dt = ~READ8(ea);
-      et = (ac + dt + CARRY);
-      SET_C((et > 0xff));
-      SET_V(((ac ^ et) & (dt ^ et) & 0x80));
-      ac = ((uint8_t)(et));
-      SET_NZ(ac);
-    };
+    dt = READ8(ea);
     CYCLES(4);
-    NEXT;
+    goto _sbc;
   _fa:
     SET_NZ((ix = POP()));
     CYCLES(4);
@@ -2686,9 +2268,13 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     ea = (et + ix);
     pc = (pc + 2);
     CYCLES((!!(0xff00 & (et ^ ea))));
+    dt = READ8(ea);
+    CYCLES(4);
+    goto _sbc;
+  /* Share the arithmetic tail to keep the direct-threaded loop compact. */
+  _sbc:
     if (DECIMAL_p) {
       CYCLES(1);
-      dt = READ8(ea);
       et = (ac + ~dt + CARRY);
       ea = (ac - dt - !CARRY);
       if (ea & 0x8000) {
@@ -2702,14 +2288,13 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
       SET_C(((ea <= ((uint16_t)(ac))) || ((ea & 0xff0) == 0xff0)));
       ac = (ea & 0xff);
     } else {
-      dt = ~READ8(ea);
+      dt = ~dt;
       et = (ac + dt + CARRY);
       SET_C((et > 0xff));
       SET_V(((ac ^ et) & (dt ^ et) & 0x80));
       ac = ((uint8_t)(et));
       SET_NZ(ac);
     };
-    CYCLES(4);
     NEXT;
   _fe:
     et = READX16(pc);

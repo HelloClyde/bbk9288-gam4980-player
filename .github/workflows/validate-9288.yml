@@ -34,6 +34,15 @@ jobs:
 
       - name: Build and run core smoke test
         run: |
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Isrc \
+            tests/s6502_arithmetic_test.c \
+            -o /tmp/s6502-arithmetic-test
+          /tmp/s6502-arithmetic-test
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Isrc \
+            -DS6502_NO_COMPUTED_GOTO \
+            tests/s6502_arithmetic_test.c \
+            -o /tmp/s6502-arithmetic-switch-test
+          /tmp/s6502-arithmetic-switch-test
           gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
             -Wno-unused-parameter -DDL_DOWN -D_RLS_ -Isrc \
             tests/core_smoke.c src/gam4980_core.c \

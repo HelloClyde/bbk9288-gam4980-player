@@ -95,3 +95,26 @@ index 0bec098..309aa70 100644
      )> {
    let DecoderMethod = "DecodeGR32RegisterClass";
  }
+diff --git a/llvm/lib/Target/S1C33/S1C33HoistImmInLoop.cpp b/llvm/lib/Target/S1C33/S1C33HoistImmInLoop.cpp
+--- a/llvm/lib/Target/S1C33/S1C33HoistImmInLoop.cpp
++++ b/llvm/lib/Target/S1C33/S1C33HoistImmInLoop.cpp
+@@ -168,6 +168,19 @@ bool S1C33HoistImmInLoop::runOnMachineFunction(MachineFunction &MF) {
+   if (skipFunction(MF.getFunction()))
+     return false;
+ 
++  // Direct-threaded interpreters form one enormous natural loop whose
++  // hundreds of opcode blocks share many small immediates.  Hoisting every
++  // repeated value into that loop's preheader creates long-lived virtual
++  // registers and turns cheap immediates into stack spills.  Keep the pass
++  // for ordinary loops, but leave large indirect-branch state machines to
++  // the normal immediate forms and register allocator rematerialization.
++  if (MF.size() > 128) {
++    for (const MachineBasicBlock &MBB : MF)
++      for (const MachineInstr &MI : MBB)
++        if (MI.isIndirectBranch())
++          return false;
++  }
++
+   const S1C33InstrInfo &TII = *MF.getSubtarget<S1C33Subtarget>().getInstrInfo();
+   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLI();
+   MachineRegisterInfo &MRI = MF.getRegInfo();
