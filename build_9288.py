@@ -323,15 +323,23 @@ def parse_args() -> argparse.Namespace:
         dest="aot",
         action="store_false",
         default=True,
-        help="disable the guarded E.BIN hot-block AOT and use only the interpreter",
+        help="disable all AOT paths and use only the interpreter",
     )
     parser.add_argument(
         "--game-load-aot",
+        dest="game_load_aot",
         action="store_true",
+        default=True,
         help=(
-            "add runtime settings, performance logging, and experimental "
-            "game-code AOT templates"
+            "enable runtime settings, performance logging, and game-code "
+            "AOT templates (default)"
         ),
+    )
+    parser.add_argument(
+        "--no-game-load-aot",
+        dest="game_load_aot",
+        action="store_false",
+        help="omit game-code AOT templates and runtime performance sampling",
     )
     parser.add_argument(
         "--load-diagnostics",
@@ -371,7 +379,7 @@ def main() -> None:
             args.toolchain.resolve(),
             switch_dispatch=args.switch_dispatch,
             enable_aot=args.aot,
-            game_load_aot=args.game_load_aot,
+            game_load_aot=args.game_load_aot and args.aot,
             load_diagnostics=args.load_diagnostics,
             memory_diagnostics=args.memory_diagnostics,
             optimization=args.optimization,
