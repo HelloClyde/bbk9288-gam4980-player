@@ -139,6 +139,11 @@ u32 gam4980_aot_block_count(void);
 u64 gam4980_aot_block_hit_count(u32 block_id);
 u16 gam4980_aot_block_bank2(u32 block_id);
 int gam4980_aot_block_bank2_varies(u32 block_id);
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+u64 gam4980_game_aot_instruction_count(void);
+u32 gam4980_game_aot_entry_count(void);
+int gam4980_game_aot_enabled(void);
+#endif
 #endif
 #ifdef GAM4980_STATE_DIAGNOSTICS
 u64 gam4980_state_hash(void);

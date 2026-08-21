@@ -529,6 +529,15 @@ int main(int argc, char **argv)
         "AOT instructions: %llu\n",
         (unsigned long long)gam4980_aot_instruction_count()
     );
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    printf(
+        "Game AOT entries: %u\nGame AOT instructions: %llu\n"
+        "Game AOT enabled: %d\n",
+        (unsigned)gam4980_game_aot_entry_count(),
+        (unsigned long long)gam4980_game_aot_instruction_count(),
+        gam4980_game_aot_enabled()
+    );
+#endif
     {
         u32 block_id;
 

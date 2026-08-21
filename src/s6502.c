@@ -93,6 +93,13 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     uint8_t iy = u->iy;
     uint8_t sp = u->sp;
     uint8_t status = u->status;
+#ifdef S6502_GAME_AOT_DISPATCH
+    uint16_t game_aot_entry_id = 0;
+    uint16_t game_aot_hash_slot = 0;
+    uint32_t game_aot_physical_pc = 0;
+    const s6502_game_aot_entry_t *game_aot_entry = 0;
+    const uint8_t *game_aot_code = 0;
+#endif
 #ifdef S6502_INSTRUCTION_HOOK
     uint16_t instruction_pc;
     uint8_t instruction_opcode;
@@ -118,6 +125,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     } else {
 #ifdef S6502_AOT_DISPATCH
       S6502_AOT_DISPATCH();
+#endif
+#ifdef S6502_GAME_AOT_DISPATCH
+      S6502_GAME_AOT_DISPATCH();
 #endif
       NEXT;
     };
@@ -2338,6 +2348,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
 #define S6502_AOT_EMIT_BLOCKS
 #include "s6502_aot_ebin_generated.h"
 #undef S6502_AOT_EMIT_BLOCKS
+#endif
+#ifdef S6502_GAME_AOT_EMIT_BLOCKS
+#include "s6502_game_load_aot.h"
 #endif
   };
 #undef CYCLES

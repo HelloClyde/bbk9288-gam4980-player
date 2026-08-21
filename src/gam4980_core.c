@@ -106,6 +106,73 @@ static uint16_t mem_read16(uint16_t addr);
 static uint16_t mem_readx16(uint16_t addr);
 static uint16_t mem_read16_wrapped(uint16_t addr);
 static void mem_write(uint16_t addr, uint8_t val);
+#ifndef GAM4980_CACHE_STORAGE
+#define GAM4980_CACHE_STORAGE
+#endif
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+#ifndef GAM4980_ENABLE_AOT
+#error GAM4980_ENABLE_GAME_LOAD_AOT requires GAM4980_ENABLE_AOT
+#endif
+#define S6502_GAME_AOT_MAX_ENTRIES 192u
+#define S6502_GAME_AOT_HASH_SIZE 512u
+#define S6502_GAME_AOT_MAX_BYTES 38u
+typedef struct s6502_game_aot_entry {
+    uint32_t physical_pc;
+    uint8_t pattern;
+    uint8_t size;
+    uint8_t code[S6502_GAME_AOT_MAX_BYTES];
+} s6502_game_aot_entry_t;
+static s6502_game_aot_entry_t
+    s6502_game_aot_entries[S6502_GAME_AOT_MAX_ENTRIES]
+    GAM4980_CACHE_STORAGE;
+static uint16_t s6502_game_aot_hash[S6502_GAME_AOT_HASH_SIZE]
+    GAM4980_CACHE_STORAGE;
+static uint16_t s6502_game_aot_entry_count;
+static uint16_t s6502_game_aot_bank_mask;
+static uint16_t *s6502_game_aot_banks;
+static uint32_t s6502_game_aot_physical_end;
+static uint32_t s6502_game_aot_storage_end;
+static int s6502_game_aot_enabled;
+static void s6502_game_aot_prepare(const uint8_t *game, uint32_t size);
+static void s6502_game_aot_invalidate(uint32_t offset, uint32_t size);
+#ifdef GAM4980_AOT_DIAGNOSTICS
+static uint64_t s6502_game_aot_instruction_hits;
+#define S6502_GAME_AOT_HIT(instructions) \
+    (s6502_game_aot_instruction_hits += (instructions))
+#else
+#define S6502_GAME_AOT_HIT(instructions) ((void)0)
+#endif
+#define S6502_GAME_AOT_DISPATCH() do {                                      \
+    if (s6502_game_aot_enabled &&                                           \
+        (s6502_game_aot_bank_mask & (uint16_t)(1u << (pc >> 12)))) {       \
+        game_aot_physical_pc =                                              \
+            ((uint32_t)s6502_game_aot_banks[pc >> 12] << 12) |             \
+            (pc & 0x0fffu);                                                 \
+        game_aot_hash_slot = (uint16_t)(                                   \
+            (game_aot_physical_pc ^ (game_aot_physical_pc >> 9) ^          \
+                (game_aot_physical_pc >> 18)) &                            \
+            (S6502_GAME_AOT_HASH_SIZE - 1u)                                \
+        );                                                                  \
+        game_aot_entry_id = s6502_game_aot_hash[game_aot_hash_slot];       \
+        while (game_aot_entry_id &&                                        \
+            s6502_game_aot_entries[game_aot_entry_id - 1u].physical_pc !=  \
+                game_aot_physical_pc) {                                     \
+            game_aot_hash_slot = (uint16_t)(                               \
+                (game_aot_hash_slot + 1u) &                                \
+                (S6502_GAME_AOT_HASH_SIZE - 1u)                            \
+            );                                                              \
+            game_aot_entry_id = s6502_game_aot_hash[game_aot_hash_slot];   \
+        }                                                                   \
+        if (game_aot_entry_id) {                                            \
+            game_aot_entry =                                               \
+                &s6502_game_aot_entries[game_aot_entry_id - 1u];           \
+            game_aot_code = game_aot_entry->code;                          \
+            goto _game_aot_dispatch;                                       \
+        }                                                                   \
+    }                                                                       \
+} while (0)
+#define S6502_GAME_AOT_EMIT_BLOCKS
+#endif
 #ifdef GAM4980_ENABLE_AOT
 static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id);
 static __attribute__((noinline)) int s6502_aot_validate(uint32_t block_id);
@@ -145,6 +212,11 @@ static uint8_t *s6502_page3;
         shutdown_requested = 1;  \
     }
 #include "s6502.c"
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+#undef S6502_GAME_AOT_EMIT_BLOCKS
+#undef S6502_GAME_AOT_DISPATCH
+#undef S6502_GAME_AOT_HIT
+#endif
 #ifdef GAM4980_ENABLE_AOT
 #define S6502_AOT_UNDEFINE
 #include "s6502_aot_ebin_generated.h"
@@ -190,9 +262,6 @@ static uint8_t s6502_aot_bank2_varies[S6502_AOT_BLOCK_COUNT];
 
 #define ROM_BANK_SIZE 0x1000u
 #define ROM_CACHE_LINES 32u
-#ifndef GAM4980_CACHE_STORAGE
-#define GAM4980_CACHE_STORAGE
-#endif
 static uint8_t rom_bank_cache[ROM_CACHE_LINES][ROM_BANK_SIZE]
     GAM4980_CACHE_STORAGE;
 static uint8_t rom_direct_cache[ROM_BANK_SIZE] GAM4980_CACHE_STORAGE;
@@ -374,6 +443,146 @@ static inline uint32_t PA(uint16_t addr)
     return (sys.bk_tab[bank] << 12) | (addr & 0x0fff);
 }
 
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+static uint16_t s6502_game_aot_hash_slot(uint32_t physical_pc)
+{
+    return (uint16_t)(
+        (physical_pc ^ (physical_pc >> 9) ^ (physical_pc >> 18)) &
+        (S6502_GAME_AOT_HASH_SIZE - 1u)
+    );
+}
+
+static uint8_t s6502_game_aot_pattern_at(
+    const uint8_t *code, uint32_t remaining
+)
+{
+    if (remaining >= 21u &&
+        code[0] == 0xa9u && code[2] == 0x85u &&
+        code[4] == 0xa9u && code[6] == 0x85u &&
+        code[8] == 0xa0u && code[10] == 0xb1u &&
+        code[12] == 0x85u && code[14] == 0xa9u &&
+        code[16] == 0x85u && code[18] == 0x20u)
+        return 1u;
+    if (remaining >= 38u &&
+        code[0] == 0xa0u && code[2] == 0xb1u &&
+        code[4] == 0x85u && code[6] == 0xc8u &&
+        code[7] == 0xb1u && code[9] == 0x85u &&
+        code[11] == 0xa5u && code[13] == 0x18u &&
+        code[14] == 0x69u && code[16] == 0x85u &&
+        code[18] == 0xa5u && code[20] == 0x69u &&
+        code[22] == 0x85u && code[24] == 0xa0u &&
+        code[26] == 0xa5u && code[28] == 0x91u &&
+        code[30] == 0xc8u && code[31] == 0xa5u &&
+        code[33] == 0x91u && code[35] == 0x4cu)
+        return 7u;
+    if (remaining >= 14u &&
+        code[0] == 0xa0u && code[2] == 0xb1u &&
+        code[4] == 0x18u && code[5] == 0x69u &&
+        code[7] == 0xa0u && code[9] == 0x91u &&
+        code[11] == 0x4cu)
+        return 2u;
+    if (remaining >= 9u &&
+        code[0] == 0xa5u && code[2] == 0x0au &&
+        code[3] == 0x0au && code[4] == 0x85u &&
+        code[6] == 0x4cu)
+        return 3u;
+    if (remaining >= 6u &&
+        code[0] == 0xa5u && code[2] == 0x29u &&
+        code[4] == 0xf0u)
+        return 5u;
+    if (remaining >= 5u &&
+        code[0] == 0xe8u && code[1] == 0xe0u &&
+        code[3] == 0xd0u)
+        return 4u;
+    if (remaining >= 4u &&
+        code[0] == 0xc9u && code[2] == 0xd0u)
+        return 6u;
+    return 0u;
+}
+
+static uint8_t s6502_game_aot_pattern_size(uint8_t encoded_pattern)
+{
+    static const uint8_t sizes[7] = {21u, 14u, 9u, 5u, 6u, 4u, 38u};
+
+    return encoded_pattern >= 1u && encoded_pattern <= 7u
+        ? sizes[encoded_pattern - 1u] : 0u;
+}
+
+static void s6502_game_aot_prepare(const uint8_t *game, uint32_t size)
+{
+    uint32_t offset;
+
+    s6502_game_aot_entry_count = 0;
+    s6502_game_aot_bank_mask = 0;
+    s6502_game_aot_enabled = 0;
+    s6502_game_aot_physical_end = 0x20d000u + size;
+    s6502_game_aot_storage_end = 0x15000u + size;
+    gam4980_memset(
+        s6502_game_aot_hash, 0, sizeof(s6502_game_aot_hash)
+    );
+#ifdef GAM4980_AOT_DIAGNOSTICS
+    s6502_game_aot_instruction_hits = 0;
+#endif
+    if (!game || size < 4u)
+        return;
+
+    for (offset = 0; offset + 4u <= size; ++offset) {
+        uint8_t encoded_pattern = s6502_game_aot_pattern_at(
+            game + offset, size - offset
+        );
+        uint8_t pattern_size;
+        uint32_t physical_pc;
+        uint16_t slot;
+        s6502_game_aot_entry_t *entry;
+
+        if (!encoded_pattern)
+            continue;
+        pattern_size = s6502_game_aot_pattern_size(encoded_pattern);
+        if (!pattern_size || pattern_size > size - offset)
+            continue;
+        /* A virtual bank switch need not map the next physical game bank. */
+        if ((offset & 0x0fffu) + pattern_size > 0x1000u)
+            continue;
+        if (s6502_game_aot_entry_count >= S6502_GAME_AOT_MAX_ENTRIES)
+            break;
+        physical_pc = 0x20d000u + offset;
+        slot = s6502_game_aot_hash_slot(physical_pc);
+        while (s6502_game_aot_hash[slot])
+            slot = (uint16_t)((slot + 1u) & (S6502_GAME_AOT_HASH_SIZE - 1u));
+
+        entry = &s6502_game_aot_entries[s6502_game_aot_entry_count];
+        entry->physical_pc = physical_pc;
+        entry->pattern = (uint8_t)(encoded_pattern - 1u);
+        entry->size = pattern_size;
+        gam4980_memcpy(entry->code, game + offset, pattern_size);
+        ++s6502_game_aot_entry_count;
+        s6502_game_aot_hash[slot] = s6502_game_aot_entry_count;
+    }
+    s6502_game_aot_enabled = s6502_game_aot_entry_count != 0u;
+    if (s6502_game_aot_enabled) {
+        uint8_t bank;
+
+        for (bank = 0; bank < 16u; ++bank) {
+            uint32_t physical_pc = (uint32_t)sys.bk_tab[bank] << 12;
+
+            if (physical_pc >= 0x20d000u &&
+                physical_pc < s6502_game_aot_physical_end)
+                s6502_game_aot_bank_mask |= (uint16_t)(1u << bank);
+        }
+    }
+}
+
+static void s6502_game_aot_invalidate(uint32_t offset, uint32_t size)
+{
+    if (!s6502_game_aot_enabled || !size)
+        return;
+    if (offset < s6502_game_aot_storage_end && offset + size > 0x15000u)
+        s6502_game_aot_enabled = 0;
+    if (!s6502_game_aot_enabled)
+        s6502_game_aot_bank_mask = 0;
+}
+#endif
+
 #ifdef GAM4980_ENABLE_AOT
 static __attribute__((noinline)) int s6502_aot_validate(uint32_t block_id)
 {
@@ -454,6 +663,22 @@ int gam4980_aot_block_bank2_varies(u32 block_id)
     return block_id < S6502_AOT_BLOCK_COUNT
         ? s6502_aot_bank2_varies[block_id] != 0u : 0;
 }
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+u64 gam4980_game_aot_instruction_count(void)
+{
+    return s6502_game_aot_instruction_hits;
+}
+
+u32 gam4980_game_aot_entry_count(void)
+{
+    return s6502_game_aot_entry_count;
+}
+
+int gam4980_game_aot_enabled(void)
+{
+    return s6502_game_aot_enabled;
+}
+#endif
 #endif
 #endif
 
@@ -503,6 +728,9 @@ static void flash_erase_range(uint32_t addr, uint32_t size)
         return;
     if (size > sys.flash_size - addr)
         size = sys.flash_size - addr;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    s6502_game_aot_invalidate(addr, size);
+#endif
     gam4980_memset(sys.flash + addr, 0xff, size);
 }
 
@@ -563,8 +791,12 @@ static void flash_write(uint32_t addr, uint8_t val)
             if (addr < GAM4980_SAVE_SIZE && addr < sys.flash_size &&
                 sys.flash[addr] != val)
                 save_dirty = 1;
-            if (addr < sys.flash_size)
+            if (addr < sys.flash_size) {
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+                s6502_game_aot_invalidate(addr, 1u);
+#endif
                 sys.flash[addr] = val;
+            }
         } else if ((addr == 0x5555) && (val == 0xaa)) {
             sys.flash_cycles += 1;
         }
@@ -806,6 +1038,13 @@ static void mem_bs(uint8_t sel)
     uint32_t paddr = PA(sel * 0x1000);
     if (sel == 0)
         return;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    if (s6502_game_aot_enabled && paddr >= 0x20d000u &&
+        paddr < s6502_game_aot_physical_end)
+        s6502_game_aot_bank_mask |= (uint16_t)(1u << sel);
+    else
+        s6502_game_aot_bank_mask &= (uint16_t)~(1u << sel);
+#endif
     if (paddr < 0x8000) {
         for (int i = 0; i < 16; i += 1) {
             sys.mem_r[sel * 16 + i] = sys.ram + paddr + i * 0x100;
@@ -1001,8 +1240,18 @@ int gam4980_init(const gam4980_buffers_t *buffers)
         s6502_aot_bank2_varies, 0, sizeof(s6502_aot_bank2_varies)
     );
 #endif
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    s6502_game_aot_entry_count = 0;
+    s6502_game_aot_bank_mask = 0;
+    s6502_game_aot_enabled = 0;
+    s6502_game_aot_physical_end = 0;
+    s6502_game_aot_storage_end = 0;
+#endif
 #endif
     sys.ram = buffers->ram;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    s6502_game_aot_banks = sys.bk_tab;
+#endif
     s6502_stack_ram = buffers->ram;
     sys.flash = buffers->flash;
     sys.flash_size = buffers->flash_size;
@@ -1134,6 +1383,9 @@ int gam4980_load_game_header(const u8 *gam, u32 size)
     sys.bk_tab[0xc] = sys.bk_tab[0x09] + 3;
     for (int i = 0x05; i <= 0x0c; i += 1)
         mem_bs(i);
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    s6502_game_aot_prepare(sys.flash + 0x15000u, size);
+#endif
     mem_write(0x2029, 0x0d);
     mem_write(0x202a, 0x02);
     // Push game return address, 0x0260=BRK.

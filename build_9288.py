@@ -96,6 +96,7 @@ def compile_app(
     toolchain: Path,
     switch_dispatch: bool,
     enable_aot: bool,
+    game_load_aot: bool,
     load_diagnostics: bool,
     memory_diagnostics: bool,
     optimization: str,
@@ -136,6 +137,10 @@ def compile_app(
         common_flags.append("-DS6502_NO_COMPUTED_GOTO")
     if enable_aot:
         common_flags.append("-DGAM4980_ENABLE_AOT")
+    if game_load_aot:
+        if not enable_aot:
+            raise SystemExit("--game-load-aot requires the normal AOT dispatcher")
+        common_flags.append("-DGAM4980_ENABLE_GAME_LOAD_AOT")
     if load_diagnostics:
         common_flags.append("-DGAM4980_LOAD_DIAGNOSTICS")
     if memory_diagnostics:
@@ -316,6 +321,11 @@ def parse_args() -> argparse.Namespace:
         help="disable the guarded E.BIN hot-block AOT and use only the interpreter",
     )
     parser.add_argument(
+        "--game-load-aot",
+        action="store_true",
+        help="experimentally bind common game-code superblocks while loading .gam",
+    )
+    parser.add_argument(
         "--load-diagnostics",
         action="store_true",
         help="persist true-device load stages to A:\\gam4980\\DIAG.TXT",
@@ -353,6 +363,7 @@ def main() -> None:
             args.toolchain.resolve(),
             switch_dispatch=args.switch_dispatch,
             enable_aot=args.aot,
+            game_load_aot=args.game_load_aot,
             load_diagnostics=args.load_diagnostics,
             memory_diagnostics=args.memory_diagnostics,
             optimization=args.optimization,
