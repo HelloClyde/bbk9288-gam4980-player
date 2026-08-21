@@ -29,8 +29,12 @@ jobs:
         run: |
           python3 -m py_compile \
             build_9288.py package_release_9288.py \
+            tools/generate_aot_ebin.py \
             tests/emulator_qmp_smoke.py tests/prepare_emulator_nand.py \
             tests/check_2x_frame.py
+
+      - name: Check generated AOT blocks
+        run: python3 tools/generate_aot_ebin.py --check
 
       - name: Build and run core smoke test
         run: |
@@ -47,6 +51,19 @@ jobs:
             -Wno-unused-parameter -DDL_DOWN -D_RLS_ -Isrc \
             tests/core_smoke.c src/gam4980_core.c \
             -o /tmp/gam4980-core-smoke
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -DDL_DOWN -D_RLS_ \
+            -DGAM4980_ENABLE_AOT -Isrc \
+            tests/core_smoke.c src/gam4980_core.c \
+            -o /tmp/gam4980-core-aot-smoke
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -DDL_DOWN -D_RLS_ \
+            -DGAM4980_ENABLE_PROFILING -Isrc \
+            tools/gam4980_aot_profile.c src/gam4980_core.c \
+            -o /tmp/gam4980-aot-profile
           /tmp/gam4980-core-smoke \
+            应用/数据/游戏/gam4980/8.BIN \
+            应用/数据/游戏/gam4980/E.BIN
+          /tmp/gam4980-core-aot-smoke \
             应用/数据/游戏/gam4980/8.BIN \
             应用/数据/游戏/gam4980/E.BIN

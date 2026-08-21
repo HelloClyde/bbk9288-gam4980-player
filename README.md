@@ -56,10 +56,18 @@ A:\gam4980\你的游戏.gam
   先前偏向模拟器表现的 `-Os` 构建，EXE 约增加 11 KiB，不增加运行时内存。
 - 工具链补丁会识别 computed-goto 形成的大型间接跳转状态机，避免把数百个
   立即数提升成贯穿整个解释器的长生命周期寄存器；当前 `s6502_exec` 的栈帧
-  从 34 个字缩到 12 个字，静态栈读取点从 1222 个降到 598 个。
-- 在同一台主机上用《伏魔记》连续运行 100,000 个客机帧、取三次中位数，
-  当前核心吞吐约为 v1.2 正式 `-Os` 构建的 2.3 倍；该数字不包含 9288 固件
-  整屏传输和 GUI 开销，不能直接等同于真机显示帧率。
+  在纯解释器构建中从 34 个字缩到 12 个字，启用 AOT 后为 15 个字；纯解释器
+  的静态栈读取点从 1222 个降到 598 个。
+- 正式构建默认启用受保护的 E.BIN 热点 AOT：将《伏魔记》开场轨迹中最热的
+  46 个 65C02 基本块预先生成为 S1C33 C 超块，覆盖该轨迹约 80.0% 的客机指令。
+  已验证的相邻块会直接衔接，零页、固定 RAM 页和只读启动页会走专用快路径。
+  每个块在首次进入时仍校验物理映射、相关 RAM bank 和 ROM 字节，不匹配便
+  自动回退到解释器；不绑定、不打包任何 `.gam` 游戏。AOT 使 KF2 增加约
+  18.5 KiB，`.bss` 仅增加 52 字节，不使用 JIT 缓冲区或额外堆内存。
+- 在同一台主机上用《伏魔记》连续运行 100,000 个客机帧、交替测量并取中位数，
+  当前 AOT 核心相对同一份源码的纯解释器吞吐提升约 1.40～1.43 倍，执行时间
+  减少约 29%～30%。该数字不包含 9288 固件整屏传输和 GUI 开销，不能直接
+  等同于真机显示帧率。
 - 2× 屏幕输出把位展开、水平对齐和双行复制合并成一次查表循环；在输出逐字节
   一致的主机微基准中，应用侧画面预处理约为旧实现的 4.2 倍，同时仍保持
   20 fps GUI 提交频率和 `SysBltFrame` 真机兼容路径。查表占用 2 KiB 静态
@@ -153,7 +161,8 @@ freestanding S1C33 ELF，再封装 KF2 头和图标。`package_release_9288.py` 
 校验 KF2 布局、分类、图标、ROM 大小和 SHA-256，并生成可重复的 ZIP。
 
 如需排查编译器兼容性，可向 `build_9288.py` 传入 `--switch-dispatch`，使用
-较慢但可移植的 `switch` 分派。
+较慢但可移植的 `switch` 分派。AOT 默认开启；需要做纯解释器对照时可传入
+`--no-aot`。
 
 ## 图标
 
@@ -200,6 +209,29 @@ gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
   应用/数据/游戏/gam4980/E.BIN \
   /path/to/test.gam
 ```
+
+AOT 热点分析工具只在电脑端启用逐指令钩子，不会进入 9288 构建。下面的例子
+运行 5000 个客机帧，并在指定帧注入 Enter：
+
+```bash
+gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
+  -Wno-unused-parameter -DDL_DOWN -D_RLS_ \
+  -DGAM4980_ENABLE_PROFILING -Isrc \
+  tools/gam4980_aot_profile.c src/gam4980_core.c \
+  -o build/gam4980-aot-profile
+./build/gam4980-aot-profile \
+  --frames 5000 --start-frame 3300 \
+  --key 3300:enter --key 3480:enter --key 4380:enter \
+  --frame-output build/aot-final-frame.pbm \
+  --output build/aot-profile.csv \
+  应用/数据/游戏/gam4980/8.BIN \
+  应用/数据/游戏/gam4980/E.BIN \
+  /path/to/test.gam
+```
+
+输出按“物理 PC + 虚拟 PC”归并基本块，并给出 50%～99% 的动态指令覆盖率。
+设计、限制和《伏魔记》开场阶段的基准见
+[`docs/aot-profiling.md`](docs/aot-profiling.md)。
 
 模拟器验证时先复制原始 NAND，再用增量安装脚本写入应用、ROM 和自备游戏。
 脚本会保留 `kernel.bin`，不要把唯一的原始 NAND 作为输出：

@@ -95,6 +95,7 @@ def compile_app(
     sdk: Path,
     toolchain: Path,
     switch_dispatch: bool,
+    enable_aot: bool,
     load_diagnostics: bool,
     memory_diagnostics: bool,
     optimization: str,
@@ -133,6 +134,8 @@ def compile_app(
     ]
     if switch_dispatch:
         common_flags.append("-DS6502_NO_COMPUTED_GOTO")
+    if enable_aot:
+        common_flags.append("-DGAM4980_ENABLE_AOT")
     if load_diagnostics:
         common_flags.append("-DGAM4980_LOAD_DIAGNOSTICS")
     if memory_diagnostics:
@@ -306,6 +309,13 @@ def parse_args() -> argparse.Namespace:
         help="use the slower portable 6502 switch dispatcher",
     )
     parser.add_argument(
+        "--no-aot",
+        dest="aot",
+        action="store_false",
+        default=True,
+        help="disable the guarded E.BIN hot-block AOT and use only the interpreter",
+    )
+    parser.add_argument(
         "--load-diagnostics",
         action="store_true",
         help="persist true-device load stages to A:\\gam4980\\DIAG.TXT",
@@ -342,6 +352,7 @@ def main() -> None:
             sdk,
             args.toolchain.resolve(),
             switch_dispatch=args.switch_dispatch,
+            enable_aot=args.aot,
             load_diagnostics=args.load_diagnostics,
             memory_diagnostics=args.memory_diagnostics,
             optimization=args.optimization,

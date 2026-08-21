@@ -96,6 +96,12 @@ typedef int (*gam4980_rom_read_fn)(
     void *context, u8 region, u32 offset, u8 *out, u32 size
 );
 
+#ifdef GAM4980_ENABLE_PROFILING
+typedef void (*gam4980_instruction_profile_fn)(
+    void *context, u16 virtual_pc, u32 physical_pc, u8 opcode
+);
+#endif
+
 typedef struct gam4980_buffers {
     u8 *ram;
     u8 *flash;
@@ -127,5 +133,20 @@ int gam4980_save_dirty(void);
 void gam4980_save_mark_clean(void);
 int gam4980_shutdown_requested(void);
 u16 gam4980_shutdown_pc(void);
+#if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
+u64 gam4980_aot_instruction_count(void);
+u32 gam4980_aot_block_count(void);
+u64 gam4980_aot_block_hit_count(u32 block_id);
+u16 gam4980_aot_block_bank2(u32 block_id);
+int gam4980_aot_block_bank2_varies(u32 block_id);
+#endif
+#ifdef GAM4980_STATE_DIAGNOSTICS
+u64 gam4980_state_hash(void);
+#endif
+#ifdef GAM4980_ENABLE_PROFILING
+void gam4980_set_instruction_profile(
+    gam4980_instruction_profile_fn callback, void *context
+);
+#endif
 
 #endif

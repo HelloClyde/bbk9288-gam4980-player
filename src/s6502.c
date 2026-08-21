@@ -93,8 +93,21 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     uint8_t iy = u->iy;
     uint8_t sp = u->sp;
     uint8_t status = u->status;
+#ifdef S6502_INSTRUCTION_HOOK
+    uint16_t instruction_pc;
+    uint8_t instruction_opcode;
+#define S6502_FETCH_OPCODE()                                                  \
+    (instruction_pc = pc, instruction_opcode = READX8(pc++),                 \
+     S6502_INSTRUCTION_HOOK(instruction_pc, instruction_opcode),             \
+     instruction_opcode)
+#else
+#define S6502_FETCH_OPCODE() READX8(pc++)
+#endif
   _exit:
     if ((executed >= cycles) || sys_halt_p()) {
+#ifdef S6502_AOT_DISPATCH
+  _aot_return:
+#endif
       u->pc = pc;
       u->ac = ac;
       u->ix = ix;
@@ -103,11 +116,14 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
       u->status = status;
       return (executed);
     } else {
+#ifdef S6502_AOT_DISPATCH
+      S6502_AOT_DISPATCH();
+#endif
       NEXT;
     };
   _next:
 #ifdef S6502_NO_COMPUTED_GOTO
-    switch (READX8(pc++)) {
+    switch (S6502_FETCH_OPCODE()) {
     case 0x00: goto _00;
     case 0x01: goto _01;
     case 0x02: goto _02;
@@ -366,7 +382,7 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     case 0xff: goto _ff;
     }
 #else
-    goto *_table[READX8(pc++)];
+    goto *_table[S6502_FETCH_OPCODE()];
 #endif
   _00:
     BRK_HOOK;
@@ -2318,6 +2334,11 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
     };
     CYCLES(5);
     NEXT;
+#ifdef S6502_AOT_DISPATCH
+#define S6502_AOT_EMIT_BLOCKS
+#include "s6502_aot_ebin_generated.h"
+#undef S6502_AOT_EMIT_BLOCKS
+#endif
   };
 #undef CYCLES
 #undef EXIT
@@ -2346,4 +2367,5 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
 #undef SET_NZ
 #undef PUSH
 #undef POP
+#undef S6502_FETCH_OPCODE
 }

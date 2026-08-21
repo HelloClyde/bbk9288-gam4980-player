@@ -106,6 +106,27 @@ static uint16_t mem_read16(uint16_t addr);
 static uint16_t mem_readx16(uint16_t addr);
 static uint16_t mem_read16_wrapped(uint16_t addr);
 static void mem_write(uint16_t addr, uint8_t val);
+#ifdef GAM4980_ENABLE_AOT
+static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id);
+static __attribute__((noinline)) int s6502_aot_validate(uint32_t block_id);
+#ifdef GAM4980_AOT_DIAGNOSTICS
+static void s6502_aot_hit(uint32_t block_id, uint32_t instructions);
+#define S6502_AOT_HIT(id, instructions) s6502_aot_hit(id, instructions)
+#else
+#define S6502_AOT_HIT(id, instructions) ((void)0)
+#endif
+#define S6502_AOT_DEFINE_DATA
+#include "s6502_aot_ebin_generated.h"
+#undef S6502_AOT_DEFINE_DATA
+static uint8_t s6502_aot_validation[S6502_AOT_BLOCK_COUNT];
+#define S6502_AOT_DEFINE_DISPATCH
+#include "s6502_aot_ebin_generated.h"
+#undef S6502_AOT_DEFINE_DISPATCH
+#endif
+#ifdef GAM4980_ENABLE_PROFILING
+static void profile_instruction(uint16_t virtual_pc, uint8_t opcode);
+#define S6502_INSTRUCTION_HOOK(pc, opcode) profile_instruction(pc, opcode)
+#endif
 
 #define READ8(addr)       mem_read(addr)
 #define READX8(addr)      mem_readx(addr)
@@ -114,6 +135,7 @@ static void mem_write(uint16_t addr, uint8_t val);
 #define READ16W(addr)     mem_read16_wrapped(addr)
 #define WRITE8(addr, val) mem_write(addr, val)
 static uint8_t *s6502_stack_ram;
+static uint8_t *s6502_page3;
 #define S6502_FAST_STACK_RAM s6502_stack_ram
 #define BRK_HOOK                 \
     {                            \
@@ -123,6 +145,15 @@ static uint8_t *s6502_stack_ram;
         shutdown_requested = 1;  \
     }
 #include "s6502.c"
+#ifdef GAM4980_ENABLE_AOT
+#define S6502_AOT_UNDEFINE
+#include "s6502_aot_ebin_generated.h"
+#undef S6502_AOT_UNDEFINE
+#undef S6502_AOT_HIT
+#endif
+#ifdef GAM4980_ENABLE_PROFILING
+#undef S6502_INSTRUCTION_HOOK
+#endif
 
 static struct {
     s6502_t      cpu;
@@ -142,6 +173,20 @@ static struct {
     uint16_t     bk_tab[16];
     uint16_t     bk_sys_d;
 } sys;
+
+#ifdef GAM4980_ENABLE_PROFILING
+static gam4980_instruction_profile_fn instruction_profile_callback;
+static void *instruction_profile_context;
+#endif
+
+#ifdef GAM4980_ENABLE_AOT
+#ifdef GAM4980_AOT_DIAGNOSTICS
+static uint64_t s6502_aot_block_hits[S6502_AOT_BLOCK_COUNT];
+static uint64_t s6502_aot_instruction_hits;
+static uint16_t s6502_aot_bank2[S6502_AOT_BLOCK_COUNT];
+static uint8_t s6502_aot_bank2_varies[S6502_AOT_BLOCK_COUNT];
+#endif
+#endif
 
 #define ROM_BANK_SIZE 0x1000u
 #define ROM_CACHE_LINES 32u
@@ -328,6 +373,108 @@ static inline uint32_t PA(uint16_t addr)
     uint8_t bank = addr >> 12;
     return (sys.bk_tab[bank] << 12) | (addr & 0x0fff);
 }
+
+#ifdef GAM4980_ENABLE_AOT
+static __attribute__((noinline)) int s6502_aot_validate(uint32_t block_id)
+{
+    const s6502_aot_block_t *block;
+    uint32_t index;
+
+    if (block_id >= S6502_AOT_BLOCK_COUNT)
+        return 0;
+    block = &s6502_aot_blocks[block_id];
+    for (index = 0; index < block->signature_size; ++index) {
+        if (mem_readx((uint16_t)(block->virtual_pc + index)) !=
+            s6502_aot_signature[block->signature_offset + index]) {
+            s6502_aot_validation[block_id] = 2u;
+            return 0;
+        }
+    }
+    s6502_aot_validation[block_id] = 1u;
+    return 1;
+}
+
+static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id)
+{
+    const s6502_aot_block_t *block;
+    uint8_t validation;
+
+    if (block_id >= S6502_AOT_BLOCK_COUNT)
+        return 0;
+    block = &s6502_aot_blocks[block_id];
+    if (PA(block->virtual_pc) != block->physical_pc)
+        return 0;
+    if (block->requires_bank2 && sys.bk_tab[2] != 0x0002u)
+        return 0;
+    validation = s6502_aot_validation[block_id];
+    if (validation == 1u)
+        return 1;
+    if (validation == 2u)
+        return 0;
+    return s6502_aot_validate(block_id);
+}
+
+#ifdef GAM4980_AOT_DIAGNOSTICS
+static void s6502_aot_hit(uint32_t block_id, uint32_t instructions)
+{
+    uint16_t bank2 = sys.bk_tab[2];
+
+    ++s6502_aot_block_hits[block_id];
+    s6502_aot_instruction_hits += instructions;
+    if (s6502_aot_bank2[block_id] == 0xffffu)
+        s6502_aot_bank2[block_id] = bank2;
+    else if (s6502_aot_bank2[block_id] != bank2)
+        s6502_aot_bank2_varies[block_id] = 1u;
+}
+
+u64 gam4980_aot_instruction_count(void)
+{
+    return s6502_aot_instruction_hits;
+}
+
+u32 gam4980_aot_block_count(void)
+{
+    return S6502_AOT_BLOCK_COUNT;
+}
+
+u64 gam4980_aot_block_hit_count(u32 block_id)
+{
+    return block_id < S6502_AOT_BLOCK_COUNT
+        ? s6502_aot_block_hits[block_id] : 0;
+}
+
+u16 gam4980_aot_block_bank2(u32 block_id)
+{
+    return block_id < S6502_AOT_BLOCK_COUNT
+        ? s6502_aot_bank2[block_id] : 0xffffu;
+}
+
+int gam4980_aot_block_bank2_varies(u32 block_id)
+{
+    return block_id < S6502_AOT_BLOCK_COUNT
+        ? s6502_aot_bank2_varies[block_id] != 0u : 0;
+}
+#endif
+#endif
+
+#ifdef GAM4980_ENABLE_PROFILING
+static void profile_instruction(uint16_t virtual_pc, uint8_t opcode)
+{
+    if (instruction_profile_callback) {
+        instruction_profile_callback(
+            instruction_profile_context, virtual_pc, PA(virtual_pc), opcode
+        );
+    }
+}
+
+void gam4980_set_instruction_profile(
+    gam4980_instruction_profile_fn callback, void *context
+)
+{
+    instruction_profile_callback = callback;
+    instruction_profile_context = context;
+}
+#endif
 
 static uint8_t flash_read(uint32_t addr)
 {
@@ -620,6 +767,7 @@ static int mem_init(void)
         sys.mem_r[0x03] = rom_boot_page;
     }
     sys.mem_iw[0x03] = invalid_write;
+    s6502_page3 = sys.mem_r[0x03];
     return 1;
 }
 
@@ -841,6 +989,19 @@ int gam4980_init(const gam4980_buffers_t *buffers)
         return -1;
 
     gam4980_memset(&sys, 0, sizeof(sys));
+#ifdef GAM4980_ENABLE_AOT
+    gam4980_memset(
+        s6502_aot_validation, 0, sizeof(s6502_aot_validation)
+    );
+#ifdef GAM4980_AOT_DIAGNOSTICS
+    gam4980_memset(s6502_aot_block_hits, 0, sizeof(s6502_aot_block_hits));
+    s6502_aot_instruction_hits = 0;
+    gam4980_memset(s6502_aot_bank2, 0xff, sizeof(s6502_aot_bank2));
+    gam4980_memset(
+        s6502_aot_bank2_varies, 0, sizeof(s6502_aot_bank2_varies)
+    );
+#endif
+#endif
     sys.ram = buffers->ram;
     s6502_stack_ram = buffers->ram;
     sys.flash = buffers->flash;
@@ -1283,10 +1444,60 @@ u16 gam4980_shutdown_pc(void)
     return shutdown_pc;
 }
 
+#ifdef GAM4980_STATE_DIAGNOSTICS
+static u64 state_hash_bytes(u64 hash, const u8 *data, u32 size)
+{
+    while (size-- != 0u) {
+        hash ^= *data++;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+u64 gam4980_state_hash(void)
+{
+    u64 hash = 1469598103934665603ull;
+
+    hash = state_hash_bytes(hash, (const u8 *)&sys.cpu.pc, sizeof(sys.cpu.pc));
+    hash = state_hash_bytes(hash, &sys.cpu.ac, sizeof(sys.cpu.ac));
+    hash = state_hash_bytes(hash, &sys.cpu.ix, sizeof(sys.cpu.ix));
+    hash = state_hash_bytes(hash, &sys.cpu.iy, sizeof(sys.cpu.iy));
+    hash = state_hash_bytes(hash, &sys.cpu.sp, sizeof(sys.cpu.sp));
+    hash = state_hash_bytes(hash, &sys.cpu.status, sizeof(sys.cpu.status));
+    hash = state_hash_bytes(hash, sys.ram, GAM4980_RAM_SIZE);
+    hash = state_hash_bytes(hash, sys.flash, sys.flash_size);
+    hash = state_hash_bytes(
+        hash, (const u8 *)sys.bk_tab, sizeof(sys.bk_tab)
+    );
+    hash = state_hash_bytes(hash, &sys.bk_sel, sizeof(sys.bk_sel));
+    hash = state_hash_bytes(hash, (const u8 *)&sys.bk_sys_d, sizeof(sys.bk_sys_d));
+    hash = state_hash_bytes(hash, &sys.flash_cmd, sizeof(sys.flash_cmd));
+    hash = state_hash_bytes(hash, &sys.flash_cycles, sizeof(sys.flash_cycles));
+    hash = state_hash_bytes(hash, (const u8 *)&step_cycles, sizeof(step_cycles));
+    hash = state_hash_bytes(hash, (const u8 *)&step_ticked, sizeof(step_ticked));
+    hash = state_hash_bytes(
+        hash, (const u8 *)&step_cycle_fraction, sizeof(step_cycle_fraction)
+    );
+    hash = state_hash_bytes(hash, (const u8 *)&rtc_frames, sizeof(rtc_frames));
+    hash = state_hash_bytes(hash, (const u8 *)timer_ticks, sizeof(timer_ticks));
+    hash = state_hash_bytes(hash, lcd_frame, sizeof(lcd_frame));
+    hash = state_hash_bytes(
+        hash, (const u8 *)&shutdown_requested, sizeof(shutdown_requested)
+    );
+    hash = state_hash_bytes(hash, (const u8 *)&shutdown_pc, sizeof(shutdown_pc));
+    return hash;
+}
+#endif
+
 void gam4980_deinit(void)
 {
+#ifdef GAM4980_ENABLE_PROFILING
+    instruction_profile_callback = 0;
+    instruction_profile_context = 0;
+#endif
     gam4980_memset(&sys, 0, sizeof(sys));
     s6502_stack_ram = 0;
+    s6502_page3 = 0;
     fb = 0;
     shutdown_requested = 0;
     shutdown_pc = 0;

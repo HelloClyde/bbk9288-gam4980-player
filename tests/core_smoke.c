@@ -130,6 +130,12 @@ int main(int argc, char **argv)
         (unsigned)GAM4980_LCD_PACKED_SIZE, (unsigned)checksum,
         gam4980_cpu_halted(), (unsigned)stream_rom_reads
     );
+#if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
+    printf(
+        "aot instructions=%llu\n",
+        (unsigned long long)gam4980_aot_instruction_count()
+    );
+#endif
     gam4980_deinit();
     free(buffers.ram);
     free(buffers.flash);
