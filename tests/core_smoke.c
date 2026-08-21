@@ -68,6 +68,7 @@ int main(int argc, char **argv)
     u32 checksum = 2166136261u;
     u32 index;
     unsigned long frame_count = 120;
+    int story_input = 0;
     int result;
 
     if (argc != 3 && argc != 4) {
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
         if (!end || *end || frame_count == 0)
             return 2;
     }
+    story_input = getenv("GAM4980_SMOKE_STORY") != 0;
     memset(&buffers, 0, sizeof(buffers));
     buffers.ram = (u8 *)malloc(GAM4980_RAM_SIZE);
     buffers.flash = (u8 *)malloc(GAM4980_FLASH_SIZE);
@@ -113,8 +115,14 @@ int main(int argc, char **argv)
 
         if (!load_game(argv[3], buffers.flash))
             return 6;
-        for (frame_number = 0; frame_number < frame_count; ++frame_number)
+        for (frame_number = 0; frame_number < frame_count; ++frame_number) {
+            if (story_input) {
+                if (frame_number == 3300 || frame_number == 3480 ||
+                    frame_number == 4380)
+                    gam4980_key_down(GAM4980_KEY_ENTER);
+            }
             gam4980_run_frame();
+        }
     } else {
         (void)gam4980_render_frame();
     }

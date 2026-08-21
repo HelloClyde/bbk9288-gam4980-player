@@ -13,53 +13,69 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ROM = ROOT / "应用" / "数据" / "游戏" / "gam4980" / "E.BIN"
 DEFAULT_OUTPUT = ROOT / "src" / "s6502_aot_ebin_generated.h"
 
-# Ranked by the opening-story trace documented in docs/aot-profiling.md.
+# Ranked by the complete 8000-frame opening-story trace documented in
+# docs/aot-profiling.md.
 # Each tuple is (physical PC, virtual PC).
 HOTSPOTS = (
+    (0xEB5A75, 0x6A75),
+    (0xEB5AE0, 0x6AE0),
+    (0xEB8CB3, 0x5CB3),
+    (0xEB8CE5, 0x5CE5),
     (0xEB5678, 0x6678),
     (0xEAA55B, 0xF55B),
     (0xEB508A, 0x608A),
     (0xEBE937, 0x7937),
     (0xEB5111, 0x6111),
-    (0xEB550F, 0x650F),
-    (0xEB5A75, 0x6A75),
+    (0xEB5AA7, 0x6AA7),
+    (0xEB5AAE, 0x6AAE),
+    (0xEA8352, 0xD352),
     (0xEB5655, 0x6655),
+    (0xEB550F, 0x650F),
+    (0xEA8349, 0xD349),
     (0xEB6233, 0x7233),
-    (0xEB5AE0, 0x6AE0),
+    (0xEA8340, 0xD340),
     (0xEB782A, 0x882A),
-    (0xEB55A0, 0x65A0),
-    (0xEBE933, 0x7933),
     (0xEB5646, 0x6646),
+    (0xEBE933, 0x7933),
+    (0xEB55A0, 0x65A0),
+    (0xEA835D, 0xD35D),
     (0xEB6BD4, 0x7BD4),
     (0xEB6C30, 0x7C30),
     (0xEAA4CA, 0xF4CA),
-    (0xEB5131, 0x6131),
-    (0xEB6C47, 0x7C47),
-    (0xEA82CA, 0xD2CA),
+    (0xEB5B1A, 0x6B1A),
+    (0xEB5B02, 0x6B02),
     (0xEAA52A, 0xF52A),
+    (0xEB5131, 0x6131),
+    (0xEA82CA, 0xD2CA),
+    (0xEB6C47, 0x7C47),
     (0xEB50C2, 0x60C2),
-    (0xEB7822, 0x8822),
     (0xEB50CC, 0x60CC),
+    (0xEB7822, 0x8822),
     (0xEB50D3, 0x60D3),
     (0xEB50DA, 0x60DA),
-    (0xEB553F, 0x653F),
-    (0xEB6C38, 0x7C38),
+    (0xEAA549, 0xF549),
+    (0xEB5C18, 0x6C18),
+    (0xEB8CDA, 0x5CDA),
     (0xEA8572, 0xD572),
+    (0xEB8C8C, 0x5C8C),
+    (0xEB8D99, 0x5D99),
+    (0xEB6C38, 0x7C38),
+    (0xEB002B, 0x502B),
+    (0xEB8D17, 0x5D17),
+    (0xEA8596, 0xD596),
     (0xEB5086, 0x6086),
     (0xEB6BFA, 0x7BFA),
-    (0xEB5549, 0x6549),
-    (0xEB77C8, 0x87C8),
-    (0xEB56E5, 0x66E5),
+    (0xEB553F, 0x653F),
     (0xEA8302, 0xD302),
     (0xEAA4A5, 0xF4A5),
+    (0xEB77C8, 0x87C8),
+    (0xEB5549, 0x6549),
+    (0xEB56E5, 0x66E5),
     (0xEB61FB, 0x71FB),
     (0xEB6202, 0x7202),
     (0xEB5550, 0x6550),
     (0xEB5557, 0x6557),
     (0xEB55BA, 0x65BA),
-    (0xEB5AA7, 0x6AA7),
-    (0xEB5AAE, 0x6AAE),
-    (0xEA8596, 0xD596),
     (0xEB550B, 0x650B),
     (0xEB77ED, 0x87ED),
     (0xEAA53A, 0xF53A),
@@ -67,8 +83,6 @@ HOTSPOTS = (
     (0xEB6C29, 0x7C29),
     (0xEB503A, 0x603A),
     (0xEB49BA, 0x59BA),
-    (0xEB002B, 0x502B),
-    (0xEAA549, 0xF549),
     (0xEB564F, 0x664F),
     (0xEB54BC, 0x64BC),
     (0xEB4D31, 0x5D31),
@@ -96,9 +110,61 @@ HOTSPOTS = (
     (0xEB4846, 0x5846),
 )
 
+# Keep the formal blocks in the layout that avoids excessive live ranges in
+# the S1C33 backend.  Selection still comes from the complete trace above;
+# ordering here is a code-generation constraint, not a heat ranking.
+FORMAL_HOTSPOTS = (
+    (0xEB5678, 0x6678),
+    (0xEAA55B, 0xF55B),
+    (0xEB508A, 0x608A),
+    (0xEBE937, 0x7937),
+    (0xEB5111, 0x6111),
+    (0xEB550F, 0x650F),
+    (0xEB5A75, 0x6A75),
+    (0xEB5655, 0x6655),
+    (0xEB6233, 0x7233),
+    (0xEB5AE0, 0x6AE0),
+    (0xEB782A, 0x882A),
+    (0xEB55A0, 0x65A0),
+    (0xEBE933, 0x7933),
+    (0xEB5646, 0x6646),
+    (0xEB6BD4, 0x7BD4),
+    (0xEB6C30, 0x7C30),
+    (0xEAA4CA, 0xF4CA),
+    (0xEB5131, 0x6131),
+    (0xEB6C47, 0x7C47),
+    (0xEA82CA, 0xD2CA),
+    (0xEAA52A, 0xF52A),
+    (0xEB50C2, 0x60C2),
+    (0xEB7822, 0x8822),
+    (0xEB50CC, 0x60CC),
+    (0xEB50D3, 0x60D3),
+    (0xEB50DA, 0x60DA),
+    (0xEB6C38, 0x7C38),
+    (0xEA8572, 0xD572),
+    (0xEB5AA7, 0x6AA7),
+    (0xEB5AAE, 0x6AAE),
+    (0xEA8596, 0xD596),
+    (0xEA8340, 0xD340),
+    (0xEA8349, 0xD349),
+    (0xEA8352, 0xD352),
+    (0xEA835D, 0xD35D),
+    (0xEB5B02, 0x6B02),
+    (0xEB5B1A, 0x6B1A),
+    (0xEB5C18, 0x6C18),
+    (0xEAA549, 0xF549),
+    (0xEB002B, 0x502B),
+    (0xEB8C8C, 0x5C8C),
+    (0xEB8CB3, 0x5CB3),
+    (0xEB8CDA, 0x5CDA),
+    (0xEB8CE5, 0x5CE5),
+    (0xEB8D17, 0x5D17),
+    (0xEB8D99, 0x5D99),
+)
+
 # More ranked candidates remain available for tuning, but 46 blocks is the
 # measured speed/size optimum for the formal 9288 build.
-DEFAULT_BLOCK_LIMIT = 46
+DEFAULT_BLOCK_LIMIT = len(FORMAL_HOTSPOTS)
 
 OPCODE_LENGTHS = (
     1,2,2,1,2,2,2,2,1,2,1,1,3,3,3,3,
@@ -209,6 +275,8 @@ def emit_instruction(pc: int, instruction: bytes) -> tuple[list[str], bool]:
         line = "S6502_AOT_PHA();"
     elif opcode == 0x4A:
         line = "S6502_AOT_LSR_A();"
+    elif opcode == 0x4E:
+        line = rmw_line("LSR_M", word)
     elif opcode == 0x4C:
         line = f"S6502_AOT_JMP(0x{word:04x}u);"
     elif opcode == 0x60:
@@ -221,6 +289,8 @@ def emit_instruction(pc: int, instruction: bytes) -> tuple[list[str], bool]:
         line = "S6502_AOT_ROR_A();"
     elif opcode == 0x6D:
         line = f"S6502_AOT_ADC({read_expr(word)}, 4);"
+    elif opcode == 0x6E:
+        line = rmw_line("ROR_M", word)
     elif opcode == 0x78:
         line = "S6502_AOT_SEI();"
     elif opcode == 0x85:
@@ -287,6 +357,8 @@ def emit_instruction(pc: int, instruction: bytes) -> tuple[list[str], bool]:
         )
     elif opcode == 0xE0:
         line = f"S6502_AOT_COMPARE(ix, 0x{byte:02x}u, 2);"
+    elif opcode == 0xE5:
+        line = f"S6502_AOT_SBC({read_expr(byte)}, 3);"
     elif opcode == 0xE6:
         line = f"S6502_AOT_INC(0x{byte:02x}u, 5);"
     elif opcode == 0xE8:
@@ -330,7 +402,9 @@ def decode_block(rom: bytes, physical_pc: int, virtual_pc: int) -> dict[str, obj
         emitted.extend(lines)
         if opcode == 0x91:
             may_change_mapping = True
-        elif opcode in {0x85, 0x8D, 0x8E, 0x0E, 0x2E, 0xCE, 0xE6, 0xEE}:
+        elif opcode in {
+            0x85, 0x8D, 0x8E, 0x0E, 0x2E, 0x4E, 0x6E, 0xCE, 0xE6, 0xEE
+        }:
             address = instruction[1] if length == 2 else u16(instruction[1:3])
             if address in {0x0D, 0x0E}:
                 may_change_mapping = True
@@ -466,6 +540,16 @@ MACROS = r"""
     dt = (uint8_t)(dt << 1); SET_NZ(dt);                                     \
     S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
 } while (0)
+#define S6502_AOT_LSR_M(addr) do {                                           \
+    dt = READ8((uint16_t)(addr)); SET_C((0x01 & dt));                        \
+    dt = (uint8_t)(dt >> 1); SET_NZ(dt); WRITE8((uint16_t)(addr), dt);       \
+    CYCLES(6);                                                               \
+} while (0)
+#define S6502_AOT_LSR_M_RAM(addr) do {                                       \
+    dt = S6502_AOT_RAM_READ(addr); SET_C((0x01 & dt));                       \
+    dt = (uint8_t)(dt >> 1); SET_NZ(dt);                                     \
+    S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
+} while (0)
 #define S6502_AOT_ROL_M(addr) do {                                           \
     dt = READ8((uint16_t)(addr)); et = (uint16_t)(dt & 0x80);               \
     dt = (uint8_t)(CARRY | (dt << 1)); SET_C(et); SET_NZ(dt);                \
@@ -474,6 +558,16 @@ MACROS = r"""
 #define S6502_AOT_ROL_M_RAM(addr) do {                                       \
     dt = S6502_AOT_RAM_READ(addr); et = (uint16_t)(dt & 0x80);              \
     dt = (uint8_t)(CARRY | (dt << 1)); SET_C(et); SET_NZ(dt);                \
+    S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
+} while (0)
+#define S6502_AOT_ROR_M(addr) do {                                           \
+    dt = READ8((uint16_t)(addr)); et = (uint16_t)(dt & 0x01);               \
+    dt = (uint8_t)((0x80 * CARRY) | (dt >> 1)); SET_C(et); SET_NZ(dt);      \
+    WRITE8((uint16_t)(addr), dt); CYCLES(6);                                \
+} while (0)
+#define S6502_AOT_ROR_M_RAM(addr) do {                                       \
+    dt = S6502_AOT_RAM_READ(addr); et = (uint16_t)(dt & 0x01);              \
+    dt = (uint8_t)((0x80 * CARRY) | (dt >> 1)); SET_C(et); SET_NZ(dt);      \
     S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
 } while (0)
 #define S6502_AOT_INC(addr, cost) do {                                       \
@@ -609,7 +703,9 @@ MACRO_NAMES = (
     "S6502_AOT_PHP", "S6502_AOT_PHA", "S6502_AOT_PLA", "S6502_AOT_PLP",
     "S6502_AOT_ASL_A", "S6502_AOT_LSR_A", "S6502_AOT_ROL_A",
     "S6502_AOT_ROR_A", "S6502_AOT_ASL_M", "S6502_AOT_ASL_M_RAM",
+    "S6502_AOT_LSR_M", "S6502_AOT_LSR_M_RAM",
     "S6502_AOT_ROL_M", "S6502_AOT_ROL_M_RAM", "S6502_AOT_INC",
+    "S6502_AOT_ROR_M", "S6502_AOT_ROR_M_RAM",
     "S6502_AOT_INC_RAM", "S6502_AOT_DEC", "S6502_AOT_DEC_RAM",
     "S6502_AOT_ADC", "S6502_AOT_SBC", "S6502_AOT_SBC_INDY",
     "S6502_AOT_BRANCH", "S6502_AOT_BRANCH_TARGET",
@@ -695,7 +791,7 @@ def chain_terminator(
 
 def render(
     rom: bytes,
-    hotspots: tuple[tuple[int, int], ...] = HOTSPOTS[:DEFAULT_BLOCK_LIMIT],
+    hotspots: tuple[tuple[int, int], ...] = FORMAL_HOTSPOTS,
 ) -> str:
     blocks = [decode_block(rom, physical, virtual) for physical, virtual in hotspots]
     entries = {
@@ -783,6 +879,14 @@ def main() -> int:
         help="generate only the first N ranked blocks for performance tuning",
     )
     parser.add_argument(
+        "--formal-limit", type=int,
+        help="generate a prefix of the formal code-layout order for tuning",
+    )
+    parser.add_argument(
+        "--skip", type=int, action="append", default=[],
+        help="skip a zero-based ranked block index while tuning; may repeat",
+    )
+    parser.add_argument(
         "--check", action="store_true",
         help="fail if the generated file is missing or out of date",
     )
@@ -790,10 +894,33 @@ def main() -> int:
     rom = args.rom.read_bytes()
     if len(rom) != 0x200000:
         parser.error(f"E.BIN must be exactly 2 MiB: {args.rom}")
+    if args.limit is not None and args.formal_limit is not None:
+        parser.error("--limit and --formal-limit are mutually exclusive")
+    if args.formal_limit is not None and args.skip:
+        parser.error("--formal-limit and --skip are mutually exclusive")
     if args.limit is not None and not 1 <= args.limit <= len(HOTSPOTS):
         parser.error(f"--limit must be between 1 and {len(HOTSPOTS)}")
+    if args.formal_limit is not None and not (
+        1 <= args.formal_limit <= len(FORMAL_HOTSPOTS)
+    ):
+        parser.error(
+            f"--formal-limit must be between 1 and {len(FORMAL_HOTSPOTS)}"
+        )
     limit = args.limit if args.limit is not None else DEFAULT_BLOCK_LIMIT
-    hotspots = HOTSPOTS[:limit]
+    if any(index < 0 or index >= len(HOTSPOTS) for index in args.skip):
+        parser.error(f"--skip must be between 0 and {len(HOTSPOTS) - 1}")
+    if args.formal_limit is not None:
+        hotspots = FORMAL_HOTSPOTS[:args.formal_limit]
+    elif args.limit is None and not args.skip:
+        hotspots = FORMAL_HOTSPOTS
+    else:
+        skipped = set(args.skip)
+        hotspots = tuple(
+            hotspot for index, hotspot in enumerate(HOTSPOTS)
+            if index not in skipped
+        )[:limit]
+        if len(hotspots) != limit:
+            parser.error("not enough blocks remain after --skip")
     generated = render(rom, hotspots)
     if args.check:
         if not args.output.is_file() or args.output.read_text(encoding="utf-8") != generated:

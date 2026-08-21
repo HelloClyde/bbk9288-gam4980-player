@@ -1,4 +1,3 @@
-#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +11,7 @@
 #define DEFAULT_FRAMES 3600u
 #define DEFAULT_TOP 30u
 #define INITIAL_BUCKETS 4096u
+#define INVALID_RECORD ((size_t)-1)
 #define MAX_KEY_EVENTS 64u
 
 typedef struct block_record {
@@ -62,9 +62,9 @@ static const u8 opcode_lengths[256] = {
 static uint64_t hash_key(uint64_t key)
 {
     key ^= key >> 30;
-    key *= UINT64_C(0xbf58476d1ce4e5b9);
+    key *= 0xbf58476d1ce4e5b9ULL;
     key ^= key >> 27;
-    key *= UINT64_C(0x94d049bb133111eb);
+    key *= 0x94d049bb133111ebULL;
     return key ^ (key >> 31);
 }
 
@@ -95,11 +95,11 @@ static size_t profiler_record(profiler_t *profiler, uint64_t key)
 
     if (!profiler->bucket_count &&
         !profiler_rehash(profiler, INITIAL_BUCKETS))
-        return SIZE_MAX;
+        return INVALID_RECORD;
     if ((profiler->record_count + 1u) * 10u >=
         profiler->bucket_count * 7u &&
         !profiler_rehash(profiler, profiler->bucket_count * 2u))
-        return SIZE_MAX;
+        return INVALID_RECORD;
 
     bucket = (size_t)hash_key(key) & (profiler->bucket_count - 1u);
     while (profiler->buckets[bucket]) {
@@ -118,7 +118,7 @@ static size_t profiler_record(profiler_t *profiler, uint64_t key)
         );
 
         if (!records)
-            return SIZE_MAX;
+            return INVALID_RECORD;
         profiler->records = records;
         profiler->record_capacity = capacity;
     }
@@ -161,7 +161,7 @@ static void profile_instruction(
         uint64_t key = ((uint64_t)physical_pc << 16) | virtual_pc;
 
         profiler->current_record = profiler_record(profiler, key);
-        if (profiler->current_record == SIZE_MAX) {
+        if (profiler->current_record == INVALID_RECORD) {
             profiler->failed = 1;
             return;
         }
@@ -337,10 +337,11 @@ static int write_report(
 
         cumulative += record->instructions;
         fprintf(
-            file, "%zu,%s,0x%06x,0x%04x,%" PRIu64 ",%" PRIu64
+            file, "%zu,%s,0x%06x,0x%04x,%llu,%llu"
             ",%.3f,%.6f,%.6f\n",
             index + 1u, physical_region(physical_pc), physical_pc, virtual_pc,
-            record->entries, record->instructions, average, coverage,
+            (unsigned long long)record->entries,
+            (unsigned long long)record->instructions, average, coverage,
             profiler->total_instructions
                 ? 100.0 * (double)cumulative /
                     (double)profiler->total_instructions : 0.0
@@ -350,8 +351,9 @@ static int write_report(
 
     cumulative = 0;
     printf(
-        "profiled instructions: %" PRIu64 "\ndistinct physical blocks: %zu\n",
-        profiler->total_instructions, profiler->record_count
+        "profiled instructions: %llu\ndistinct physical blocks: %zu\n",
+        (unsigned long long)profiler->total_instructions,
+        profiler->record_count
     );
     for (index = 0; index < profiler->record_count; ++index) {
         cumulative += profiler->records[index].instructions;
@@ -369,11 +371,12 @@ static int write_report(
             u32 physical_pc = (u32)(profiler->records[index].key >> 16);
 
             printf(
-                "#%zu %-5s phys=%06x virt=%04x entries=%" PRIu64
-                " instructions=%" PRIu64 "\n",
+                "#%zu %-5s phys=%06x virt=%04x entries=%llu"
+                " instructions=%llu\n",
                 index + 1u, physical_region(physical_pc), physical_pc,
-                virtual_pc, profiler->records[index].entries,
-                profiler->records[index].instructions
+                virtual_pc,
+                (unsigned long long)profiler->records[index].entries,
+                (unsigned long long)profiler->records[index].instructions
             );
         }
     }

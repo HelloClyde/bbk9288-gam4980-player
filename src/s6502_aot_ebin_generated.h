@@ -64,28 +64,55 @@ static const uint8_t s6502_aot_signature[] = {
     0x98, 0x48, 0xad, 0x00, 0x20, 0xc9, 0xe0, 0xb0, 0x0f, 0xad, 0x81, 0x20,
     0xc9, 0x90, 0xd0, 0x03, 0x38, 0xad, 0xb7, 0x20, 0xe9, 0x08, 0x90, 0x5d,
     0xad, 0x81, 0x20, 0xc9, 0x08, 0x90, 0x66, 0xad, 0xe5, 0x03, 0xc9, 0x01,
-    0xd0, 0x37, 0xad, 0x3b, 0x00, 0xcd, 0xe7, 0x03, 0xd0, 0x2f, 0xad, 0x81,
-    0x20, 0xc9, 0x98, 0xd0, 0x03, 0x18, 0xad, 0x87, 0x20, 0x6d, 0x89, 0x20,
-    0x8d, 0x89, 0x20, 0x90, 0x03, 0xa8, 0x38, 0xa5, 0x26, 0xe9, 0x01, 0x85,
-    0x26, 0xa5, 0x27, 0xe9, 0x00, 0x85, 0x27, 0x48, 0xa5, 0x26, 0x48, 0x98,
-    0x60, 0xe0, 0x20, 0xf0, 0xaf, 0x88, 0xd0, 0xd7, 0xad, 0x81, 0x20, 0xc9,
-    0x08, 0x90, 0x71, 0x8d, 0xb7, 0x20, 0x18, 0xa9, 0x01, 0x6d, 0x3a, 0x00,
-    0x8d, 0x3a, 0x00, 0xa9, 0x00, 0x6d, 0x3b, 0x00, 0x8d, 0x3b, 0x00, 0x4c,
-    0xbd, 0x87, 0x8d, 0xb7, 0x20, 0x18, 0xa9, 0x01, 0x6d, 0x3a, 0x00, 0x8d,
-    0x3a, 0x00, 0xa9, 0x00, 0x6d, 0x3b, 0x00, 0x8d, 0x3b, 0x00, 0x4c, 0xdc,
-    0x66, 0x88, 0x38, 0xb1, 0x26, 0x48, 0x88, 0xb1, 0x26, 0x85, 0x26, 0x68,
-    0x85, 0x27, 0x8a, 0x20, 0x72, 0xd5, 0x08, 0x78, 0x8a, 0x48, 0x98, 0x48,
-    0xa9, 0x05, 0x85, 0x0c, 0xa5, 0x0e, 0xcd, 0xd5, 0x03, 0xb0, 0x14, 0xad,
-    0xe5, 0x03, 0xc9, 0x01, 0xd0, 0x31, 0xad, 0x3b, 0x00, 0xcd, 0xe7, 0x03,
-    0xd0, 0x29, 0xad, 0xe5, 0x03, 0xc9, 0x01, 0xd0, 0x49, 0xad, 0x3b, 0x00,
-    0xcd, 0xe7, 0x03, 0xd0, 0x41, 0xee, 0x82, 0x20, 0xe8, 0x4c, 0x0b, 0x65,
-    0xad, 0xe5, 0x03, 0xc9, 0x01, 0xd0, 0x32, 0xad, 0x3b, 0x00, 0xcd, 0xe7,
-    0x03, 0xd0, 0x2a, 0x48, 0x18, 0xa5, 0x2a, 0x69, 0x08, 0x85, 0x20, 0xa5,
-    0x2b, 0x69, 0x00, 0x85, 0x21, 0x68, 0x60, 0xe0, 0x10, 0xf0, 0x2f, 0x38,
-    0xa9, 0x20, 0xed, 0x89, 0x20, 0x8d, 0x3a, 0x00, 0xa9, 0x0c, 0xed, 0x85,
-    0x20, 0x8d, 0x3b, 0x00, 0x38, 0xad, 0x3a, 0x00, 0xe9, 0x0d, 0x8d, 0x38,
-    0x00, 0xad, 0x3b, 0x00, 0xe9, 0x00, 0x8d, 0x39, 0x00, 0xad, 0x81, 0x20,
-    0xc9, 0x08, 0xb0, 0x03,
+    0xd0, 0x37, 0xad, 0x3b, 0x00, 0xcd, 0xe7, 0x03, 0xd0, 0x2f, 0x18, 0xad,
+    0x87, 0x20, 0x6d, 0x89, 0x20, 0x8d, 0x89, 0x20, 0x90, 0x03, 0xa8, 0x38,
+    0xa5, 0x26, 0xe9, 0x01, 0x85, 0x26, 0xa5, 0x27, 0xe9, 0x00, 0x85, 0x27,
+    0x48, 0xa5, 0x26, 0x48, 0x98, 0x60, 0xad, 0xe5, 0x03, 0xc9, 0x01, 0xd0,
+    0x32, 0xad, 0x3b, 0x00, 0xcd, 0xe7, 0x03, 0xd0, 0x2a, 0x48, 0x18, 0xa5,
+    0x2a, 0x69, 0x08, 0x85, 0x20, 0xa5, 0x2b, 0x69, 0x00, 0x85, 0x21, 0x68,
+    0x60, 0xa2, 0x00, 0xa5, 0x20, 0x38, 0xe5, 0x23, 0xf0, 0x03, 0x08, 0xe8,
+    0x28, 0xa5, 0x21, 0xe5, 0x24, 0xf0, 0x03, 0x08, 0xe8, 0x28, 0x08, 0x68,
+    0x09, 0x02, 0xe0, 0x00, 0xf0, 0x02, 0x29, 0xfd, 0x48, 0x28, 0x60, 0x4c,
+    0x75, 0x6a, 0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe5, 0x20, 0x18, 0xad, 0x2f,
+    0x00, 0x69, 0x01, 0x8d, 0x2f, 0x00, 0xad, 0x30, 0x00, 0x69, 0x00, 0x8d,
+    0x30, 0x00, 0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe6, 0x20, 0xad, 0xcf, 0x20,
+    0xaa, 0xe0, 0x00, 0xf0, 0x0b, 0x18, 0xad, 0x2f, 0x00, 0x69, 0x01, 0x8d,
+    0x2f, 0x00, 0xad, 0x30, 0x00, 0x69, 0x00, 0x8d, 0x30, 0x00, 0xad, 0xe9,
+    0x20, 0x8d, 0x3a, 0x00, 0xad, 0xea, 0x20, 0x8d, 0x3b, 0x00, 0x20, 0x46,
+    0x66, 0x38, 0xe9, 0xe0, 0x8d, 0x00, 0x20, 0xad, 0x29, 0x20, 0x8d, 0x01,
+    0x20, 0xad, 0x2a, 0x20, 0x8d, 0x02, 0x20, 0xa9, 0x05, 0x85, 0x0c, 0xad,
+    0x00, 0x20, 0x0a, 0xaa, 0xa9, 0x00, 0x2a, 0xa8, 0x8a, 0x0a, 0xaa, 0x98,
+    0x2a, 0xa8, 0x8a, 0x18, 0x6d, 0x01, 0x20, 0x85, 0x0d, 0x98, 0x6d, 0x02,
+    0x20, 0x85, 0x0e, 0x8d, 0x00, 0x20, 0xa5, 0x0d, 0xe6, 0x0c, 0x18, 0x69,
+    0x01, 0x85, 0x0d, 0xa9, 0x00, 0x6d, 0x00, 0x20, 0x85, 0x0e, 0x8d, 0x00,
+    0x20, 0xa5, 0x0d, 0xe6, 0x0c, 0x18, 0x69, 0x01, 0x85, 0x0d, 0xa9, 0x00,
+    0x6d, 0x00, 0x20, 0x85, 0x0e, 0x8d, 0x00, 0x20, 0xa5, 0x0d, 0xe6, 0x0c,
+    0x18, 0x69, 0x01, 0x85, 0x0d, 0xa9, 0x00, 0x6d, 0x00, 0x20, 0x85, 0x0e,
+    0x8d, 0x00, 0x20, 0x68, 0xa8, 0x68, 0xaa, 0x28, 0x60, 0xa0, 0x02, 0xb1,
+    0x28, 0x85, 0x20, 0xc8, 0xb1, 0x28, 0x85, 0x21, 0xa0, 0x00, 0xa5, 0x20,
+    0x91, 0x28, 0xc8, 0xa5, 0x21, 0x91, 0x28, 0x18, 0xa5, 0x20, 0x69, 0x01,
+    0x85, 0x20, 0xa5, 0x21, 0x69, 0x00, 0x85, 0x21, 0xa0, 0x02, 0xa5, 0x20,
+    0x91, 0x28, 0xc8, 0xa5, 0x21, 0x91, 0x28, 0xa0, 0x00, 0xb1, 0x28, 0x85,
+    0x23, 0xc8, 0xb1, 0x28, 0x85, 0x24, 0xa0, 0x06, 0xb1, 0x28, 0xa0, 0x00,
+    0x91, 0x23, 0xa0, 0x04, 0x38, 0xb1, 0x28, 0xe9, 0x01, 0x91, 0x28, 0xc8,
+    0xb1, 0x28, 0xe9, 0x00, 0x91, 0x28, 0x4c, 0x10, 0x50, 0xa0, 0x00, 0xb1,
+    0x31, 0x2d, 0xe3, 0x20, 0x0d, 0xe6, 0x20, 0x91, 0x31, 0x18, 0xad, 0x31,
+    0x00, 0x69, 0x01, 0x8d, 0x31, 0x00, 0xad, 0x32, 0x00, 0x69, 0x00, 0x8d,
+    0x32, 0x00, 0xce, 0xd8, 0x20, 0xad, 0xd8, 0x20, 0xc9, 0x00, 0xf0, 0x52,
+    0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe5, 0x20, 0x18, 0xad, 0x2f, 0x00, 0x69,
+    0x01, 0x8d, 0x2f, 0x00, 0xad, 0x30, 0x00, 0x69, 0x00, 0x8d, 0x30, 0x00,
+    0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe6, 0x20, 0xad, 0xcf, 0x20, 0xaa, 0xe0,
+    0x00, 0xf0, 0x0b, 0x4e, 0xe5, 0x20, 0x6e, 0xe6, 0x20, 0xca, 0xe0, 0x00,
+    0xd0, 0xf5, 0xad, 0xe6, 0x20, 0x91, 0x31, 0x18, 0xad, 0x31, 0x00, 0x69,
+    0x01, 0x8d, 0x31, 0x00, 0xad, 0x32, 0x00, 0x69, 0x00, 0x8d, 0x32, 0x00,
+    0xce, 0xd8, 0x20, 0xad, 0xd8, 0x20, 0xc9, 0x00, 0xd0, 0xae, 0xa0, 0x00,
+    0xb1, 0x2f, 0x8d, 0xe5, 0x20, 0x18, 0xad, 0x2f, 0x00, 0x69, 0x01, 0x8d,
+    0x2f, 0x00, 0xad, 0x30, 0x00, 0x69, 0x00, 0x8d, 0x30, 0x00, 0xa0, 0x00,
+    0xb1, 0x2f, 0x8d, 0xe6, 0x20, 0xad, 0xcf, 0x20, 0xaa, 0xe0, 0x00, 0xf0,
+    0x0b, 0x18, 0xad, 0x2f, 0x00, 0x69, 0x01, 0x8d, 0x2f, 0x00, 0xad, 0x30,
+    0x00, 0x69, 0x00, 0x8d, 0x30, 0x00, 0x18, 0xad, 0xde, 0x20, 0x6d, 0x31,
+    0x00, 0x8d, 0x31, 0x00, 0xa9, 0x00, 0x6d, 0x32, 0x00, 0x8d, 0x32, 0x00,
+    0xce, 0xda, 0x20, 0xad, 0xda, 0x20, 0xc9, 0x00, 0xf0, 0x03,
 };
 
 static const s6502_aot_block_t s6502_aot_blocks[] = {
@@ -115,26 +142,26 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     {0xeb50ccu, 0x60ccu, 588u, 7u, 3u, 1u},
     {0xeb50d3u, 0x60d3u, 595u, 7u, 3u, 0u},
     {0xeb50dau, 0x60dau, 602u, 8u, 3u, 0u},
-    {0xeb553fu, 0x653fu, 610u, 7u, 3u, 1u},
-    {0xeb6c38u, 0x7c38u, 617u, 12u, 5u, 1u},
-    {0xea8572u, 0xd572u, 629u, 20u, 13u, 0u},
-    {0xeb5086u, 0x6086u, 649u, 4u, 2u, 0u},
-    {0xeb6bfau, 0x7bfau, 653u, 3u, 2u, 0u},
-    {0xeb5549u, 0x6549u, 656u, 7u, 3u, 1u},
-    {0xeb77c8u, 0x87c8u, 663u, 23u, 9u, 1u},
-    {0xeb56e5u, 0x66e5u, 686u, 23u, 9u, 1u},
-    {0xea8302u, 0xd302u, 709u, 17u, 11u, 0u},
-    {0xeaa4a5u, 0xf4a5u, 726u, 17u, 11u, 0u},
-    {0xeb61fbu, 0x71fbu, 743u, 7u, 3u, 0u},
-    {0xeb6202u, 0x7202u, 750u, 8u, 3u, 0u},
-    {0xeb5550u, 0x6550u, 758u, 7u, 3u, 0u},
-    {0xeb5557u, 0x6557u, 765u, 8u, 3u, 0u},
-    {0xeb55bau, 0x65bau, 773u, 7u, 3u, 1u},
-    {0xeb5aa7u, 0x6aa7u, 780u, 7u, 3u, 0u},
-    {0xeb5aaeu, 0x6aaeu, 787u, 8u, 3u, 0u},
-    {0xea8596u, 0xd596u, 795u, 16u, 10u, 0u},
-    {0xeb550bu, 0x650bu, 811u, 4u, 2u, 0u},
-    {0xeb77edu, 0x87edu, 815u, 41u, 17u, 1u},
+    {0xeb6c38u, 0x7c38u, 610u, 12u, 5u, 1u},
+    {0xea8572u, 0xd572u, 622u, 20u, 13u, 0u},
+    {0xeb5aa7u, 0x6aa7u, 642u, 7u, 3u, 0u},
+    {0xeb5aaeu, 0x6aaeu, 649u, 8u, 3u, 0u},
+    {0xea8596u, 0xd596u, 657u, 16u, 10u, 0u},
+    {0xea8340u, 0xd340u, 673u, 9u, 5u, 0u},
+    {0xea8349u, 0xd349u, 682u, 9u, 6u, 0u},
+    {0xea8352u, 0xd352u, 691u, 11u, 8u, 0u},
+    {0xea835du, 0xd35du, 702u, 5u, 4u, 0u},
+    {0xeb5b02u, 0x6b02u, 707u, 3u, 1u, 0u},
+    {0xeb5b1au, 0x6b1au, 710u, 39u, 17u, 1u},
+    {0xeb5c18u, 0x6c18u, 749u, 32u, 12u, 1u},
+    {0xeaa549u, 0xf549u, 781u, 116u, 62u, 1u},
+    {0xeb002bu, 0x502bu, 897u, 84u, 45u, 0u},
+    {0xeb8c8cu, 0x5c8cu, 981u, 39u, 16u, 1u},
+    {0xeb8cb3u, 0x5cb3u, 1020u, 39u, 17u, 1u},
+    {0xeb8cdau, 0x5cdau, 1059u, 11u, 5u, 1u},
+    {0xeb8ce5u, 0x5ce5u, 1070u, 32u, 13u, 1u},
+    {0xeb8d17u, 0x5d17u, 1102u, 39u, 17u, 1u},
+    {0xeb8d99u, 0x5d99u, 1141u, 45u, 18u, 1u},
 };
 
 #elif defined(S6502_AOT_DEFINE_DISPATCH)
@@ -219,64 +246,64 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     case 0x60dau:                                      \
         if (s6502_aot_match(25u)) goto _aot_25;                \
         break;                                                         \
-    case 0x653fu:                                      \
+    case 0x7c38u:                                      \
         if (s6502_aot_match(26u)) goto _aot_26;                \
         break;                                                         \
-    case 0x7c38u:                                      \
+    case 0xd572u:                                      \
         if (s6502_aot_match(27u)) goto _aot_27;                \
         break;                                                         \
-    case 0xd572u:                                      \
+    case 0x6aa7u:                                      \
         if (s6502_aot_match(28u)) goto _aot_28;                \
         break;                                                         \
-    case 0x6086u:                                      \
+    case 0x6aaeu:                                      \
         if (s6502_aot_match(29u)) goto _aot_29;                \
         break;                                                         \
-    case 0x7bfau:                                      \
+    case 0xd596u:                                      \
         if (s6502_aot_match(30u)) goto _aot_30;                \
         break;                                                         \
-    case 0x6549u:                                      \
+    case 0xd340u:                                      \
         if (s6502_aot_match(31u)) goto _aot_31;                \
         break;                                                         \
-    case 0x87c8u:                                      \
+    case 0xd349u:                                      \
         if (s6502_aot_match(32u)) goto _aot_32;                \
         break;                                                         \
-    case 0x66e5u:                                      \
+    case 0xd352u:                                      \
         if (s6502_aot_match(33u)) goto _aot_33;                \
         break;                                                         \
-    case 0xd302u:                                      \
+    case 0xd35du:                                      \
         if (s6502_aot_match(34u)) goto _aot_34;                \
         break;                                                         \
-    case 0xf4a5u:                                      \
+    case 0x6b02u:                                      \
         if (s6502_aot_match(35u)) goto _aot_35;                \
         break;                                                         \
-    case 0x71fbu:                                      \
+    case 0x6b1au:                                      \
         if (s6502_aot_match(36u)) goto _aot_36;                \
         break;                                                         \
-    case 0x7202u:                                      \
+    case 0x6c18u:                                      \
         if (s6502_aot_match(37u)) goto _aot_37;                \
         break;                                                         \
-    case 0x6550u:                                      \
+    case 0xf549u:                                      \
         if (s6502_aot_match(38u)) goto _aot_38;                \
         break;                                                         \
-    case 0x6557u:                                      \
+    case 0x502bu:                                      \
         if (s6502_aot_match(39u)) goto _aot_39;                \
         break;                                                         \
-    case 0x65bau:                                      \
+    case 0x5c8cu:                                      \
         if (s6502_aot_match(40u)) goto _aot_40;                \
         break;                                                         \
-    case 0x6aa7u:                                      \
+    case 0x5cb3u:                                      \
         if (s6502_aot_match(41u)) goto _aot_41;                \
         break;                                                         \
-    case 0x6aaeu:                                      \
+    case 0x5cdau:                                      \
         if (s6502_aot_match(42u)) goto _aot_42;                \
         break;                                                         \
-    case 0xd596u:                                      \
+    case 0x5ce5u:                                      \
         if (s6502_aot_match(43u)) goto _aot_43;                \
         break;                                                         \
-    case 0x650bu:                                      \
+    case 0x5d17u:                                      \
         if (s6502_aot_match(44u)) goto _aot_44;                \
         break;                                                         \
-    case 0x87edu:                                      \
+    case 0x5d99u:                                      \
         if (s6502_aot_match(45u)) goto _aot_45;                \
         break;                                                         \
     }                                                                      \
@@ -391,6 +418,16 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     dt = (uint8_t)(dt << 1); SET_NZ(dt);                                     \
     S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
 } while (0)
+#define S6502_AOT_LSR_M(addr) do {                                           \
+    dt = READ8((uint16_t)(addr)); SET_C((0x01 & dt));                        \
+    dt = (uint8_t)(dt >> 1); SET_NZ(dt); WRITE8((uint16_t)(addr), dt);       \
+    CYCLES(6);                                                               \
+} while (0)
+#define S6502_AOT_LSR_M_RAM(addr) do {                                       \
+    dt = S6502_AOT_RAM_READ(addr); SET_C((0x01 & dt));                       \
+    dt = (uint8_t)(dt >> 1); SET_NZ(dt);                                     \
+    S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
+} while (0)
 #define S6502_AOT_ROL_M(addr) do {                                           \
     dt = READ8((uint16_t)(addr)); et = (uint16_t)(dt & 0x80);               \
     dt = (uint8_t)(CARRY | (dt << 1)); SET_C(et); SET_NZ(dt);                \
@@ -399,6 +436,16 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
 #define S6502_AOT_ROL_M_RAM(addr) do {                                       \
     dt = S6502_AOT_RAM_READ(addr); et = (uint16_t)(dt & 0x80);              \
     dt = (uint8_t)(CARRY | (dt << 1)); SET_C(et); SET_NZ(dt);                \
+    S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
+} while (0)
+#define S6502_AOT_ROR_M(addr) do {                                           \
+    dt = READ8((uint16_t)(addr)); et = (uint16_t)(dt & 0x01);               \
+    dt = (uint8_t)((0x80 * CARRY) | (dt >> 1)); SET_C(et); SET_NZ(dt);      \
+    WRITE8((uint16_t)(addr), dt); CYCLES(6);                                \
+} while (0)
+#define S6502_AOT_ROR_M_RAM(addr) do {                                       \
+    dt = S6502_AOT_RAM_READ(addr); et = (uint16_t)(dt & 0x01);              \
+    dt = (uint8_t)((0x80 * CARRY) | (dt >> 1)); SET_C(et); SET_NZ(dt);      \
     S6502_FAST_STACK_RAM[(uint16_t)(addr)] = dt; CYCLES(6);                  \
 } while (0)
 #define S6502_AOT_INC(addr, cost) do {                                       \
@@ -650,7 +697,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_LDA(0xffu, 2);
     S6502_AOT_STA_RAM(0x20e6u, 4);
     S6502_AOT_COMPARE(iy, 0x00u, 2);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, ZERO_p, 0x652cu, 0x653fu, 26u, _aot_26);
+    S6502_AOT_BRANCH(ZERO_p, 0x652cu, 0x653fu);
 
   _aot_06:
     S6502_AOT_HIT(6u, 17u);
@@ -670,7 +717,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20cfu), 4);
     S6502_AOT_TAX();
     S6502_AOT_COMPARE(ix, 0x00u, 2);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, ZERO_p, 0x6a9cu, 0x6aa7u, 41u, _aot_41);
+    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, ZERO_p, 0x6a9cu, 0x6aa7u, 28u, _aot_28);
 
   _aot_07:
     S6502_AOT_HIT(7u, 15u);
@@ -705,7 +752,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_DEC_RAM(0x20d8u, 6);
     S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20d8u), 4);
     S6502_AOT_COMPARE(ac, 0x00u, 2);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x7254u, 0x71fbu, 36u, _aot_36);
+    S6502_AOT_BRANCH(!ZERO_p, 0x7254u, 0x71fbu);
 
   _aot_09:
     S6502_AOT_HIT(9u, 14u);
@@ -722,7 +769,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_DEC_RAM(0x20d8u, 6);
     S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20d8u), 4);
     S6502_AOT_COMPARE(ac, 0x00u, 2);
-    S6502_AOT_BRANCH(ZERO_p, 0x6b02u, 0x6b05u);
+    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN, ZERO_p, 0x6b02u, 0x6b05u, 35u, _aot_35);
 
   _aot_10:
     S6502_AOT_HIT(10u, 9u);
@@ -767,13 +814,13 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_ROL_M_RAM(0x208au);
     S6502_AOT_ROL_M_RAM(0x2085u);
     S6502_AOT_ROL_M_RAM(0x2086u);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, !CARRY_p, 0x7be2u, 0x7bfau, 30u, _aot_30);
+    S6502_AOT_BRANCH(!CARRY_p, 0x7be2u, 0x7bfau);
 
   _aot_15:
     S6502_AOT_HIT(15u, 3u);
     S6502_AOT_ASL_M_RAM(0x2089u);
     S6502_AOT_ROL_M_RAM(0x2085u);
-    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN_FAST, !CARRY_p, 0x7c38u, 0x7c47u, 27u, _aot_27, 18u, _aot_18);
+    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN_FAST, !CARRY_p, 0x7c38u, 0x7c47u, 26u, _aot_26, 18u, _aot_18);
 
   _aot_16:
     S6502_AOT_HIT(16u, 27u);
@@ -810,7 +857,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_INC_RAM(0x2082u, 6);
     S6502_AOT_INX();
     S6502_AOT_INX();
-    S6502_AOT_JMP_CHAIN(S6502_AOT_CHAIN_FAST, 0x6086u, 29u, _aot_29);
+    S6502_AOT_JMP(0x6086u);
 
   _aot_18:
     S6502_AOT_HIT(18u, 2u);
@@ -839,7 +886,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_AND_INDY(S6502_AOT_ZP16(0x23u));
     S6502_AOT_LDY(0x0bu, 2);
     S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x2au));
-    S6502_AOT_JSR_CHAIN(S6502_AOT_CHAIN, 0xd2f4u, 0xd596u, 43u, _aot_43);
+    S6502_AOT_JSR_CHAIN(S6502_AOT_CHAIN, 0xd2f4u, 0xd596u, 30u, _aot_30);
 
   _aot_20:
     S6502_AOT_HIT(20u, 10u);
@@ -852,7 +899,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_PHA();
     S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2000u), 4);
     S6502_AOT_COMPARE(ac, 0xe0u, 2);
-    S6502_AOT_BRANCH(CARRY_p, 0xf53au, 0xf549u);
+    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, CARRY_p, 0xf53au, 0xf549u, 38u, _aot_38);
 
   _aot_21:
     S6502_AOT_HIT(21u, 3u);
@@ -886,21 +933,15 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x60e2u, 0x6111u, 4u, _aot_04);
 
   _aot_26:
-    S6502_AOT_HIT(26u, 3u);
-    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2081u), 4);
-    S6502_AOT_COMPARE(ac, 0x98u, 2);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, !ZERO_p, 0x6546u, 0x6549u, 31u, _aot_31);
-
-  _aot_27:
-    S6502_AOT_HIT(27u, 5u);
+    S6502_AOT_HIT(26u, 5u);
     S6502_AOT_CLC();
     S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2087u), 4);
     S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2089u), 4);
     S6502_AOT_STA_RAM(0x2089u, 4);
     S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN_FAST, !CARRY_p, 0x7c44u, 0x7c47u, 18u, _aot_18);
 
-  _aot_28:
-    S6502_AOT_HIT(28u, 13u);
+  _aot_27:
+    S6502_AOT_HIT(27u, 13u);
     S6502_AOT_TAY();
     S6502_AOT_SEC();
     S6502_AOT_LDA(S6502_AOT_ZP_READ(0x26u), 3);
@@ -915,118 +956,20 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_TYA();
     S6502_AOT_RTS();
 
+  _aot_28:
+    S6502_AOT_HIT(28u, 3u);
+    S6502_AOT_LDA(S6502_AOT_PAGE3_READ(0x03e5u), 4);
+    S6502_AOT_COMPARE(ac, 0x01u, 2);
+    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN, !ZERO_p, 0x6aaeu, 0x6ae0u, 29u, _aot_29, 9u, _aot_09);
+
   _aot_29:
-    S6502_AOT_HIT(29u, 2u);
-    S6502_AOT_COMPARE(ix, 0x20u, 2);
-    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN, ZERO_p, 0x608au, 0x6039u, 2u, _aot_02);
-
-  _aot_30:
-    S6502_AOT_HIT(30u, 2u);
-    S6502_AOT_DEY();
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x7bfdu, 0x7bd4u, 14u, _aot_14);
-
-  _aot_31:
-    S6502_AOT_HIT(31u, 3u);
-    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2081u), 4);
-    S6502_AOT_COMPARE(ac, 0x08u, 2);
-    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN_FAST, !CARRY_p, 0x6550u, 0x65c1u, 38u, _aot_38);
-
-  _aot_32:
-    S6502_AOT_HIT(32u, 9u);
-    S6502_AOT_STA_RAM(0x20b7u, 4);
-    S6502_AOT_CLC();
-    S6502_AOT_LDA(0x01u, 2);
-    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x3au), 4);
-    S6502_AOT_STA_ZP(0x3au, 4);
-    S6502_AOT_LDA(0x00u, 2);
-    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x3bu), 4);
-    S6502_AOT_STA_ZP(0x3bu, 4);
-    S6502_AOT_JMP(0x87bdu);
-
-  _aot_33:
-    S6502_AOT_HIT(33u, 9u);
-    S6502_AOT_STA_RAM(0x20b7u, 4);
-    S6502_AOT_CLC();
-    S6502_AOT_LDA(0x01u, 2);
-    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x3au), 4);
-    S6502_AOT_STA_ZP(0x3au, 4);
-    S6502_AOT_LDA(0x00u, 2);
-    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x3bu), 4);
-    S6502_AOT_STA_ZP(0x3bu, 4);
-    S6502_AOT_JMP(0x66dcu);
-
-  _aot_34:
-    S6502_AOT_HIT(34u, 11u);
-    S6502_AOT_DEY();
-    S6502_AOT_SEC();
-    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x26u));
-    S6502_AOT_PHA();
-    S6502_AOT_DEY();
-    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x26u));
-    S6502_AOT_STA_ZP(0x26u, 3);
-    S6502_AOT_PLA();
-    S6502_AOT_STA_ZP(0x27u, 3);
-    S6502_AOT_TXA();
-    S6502_AOT_JSR_CHAIN(S6502_AOT_CHAIN_FAST, 0xd312u, 0xd572u, 28u, _aot_28);
-
-  _aot_35:
-    S6502_AOT_HIT(35u, 11u);
-    S6502_AOT_PHP();
-    S6502_AOT_SEI();
-    S6502_AOT_TXA();
-    S6502_AOT_PHA();
-    S6502_AOT_TYA();
-    S6502_AOT_PHA();
-    S6502_AOT_LDA(0x05u, 2);
-    S6502_AOT_STA(0x000cu, 3);
-    S6502_AOT_LDA(READ8(0x000eu), 3);
-    S6502_AOT_COMPARE(ac, S6502_AOT_PAGE3_READ(0x03d5u), 4);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, CARRY_p, 0xf4b6u, 0xf4cau, 16u, _aot_16);
-
-  _aot_36:
-    S6502_AOT_HIT(36u, 3u);
-    S6502_AOT_LDA(S6502_AOT_PAGE3_READ(0x03e5u), 4);
-    S6502_AOT_COMPARE(ac, 0x01u, 2);
-    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN, !ZERO_p, 0x7202u, 0x7233u, 37u, _aot_37, 8u, _aot_08);
-
-  _aot_37:
-    S6502_AOT_HIT(37u, 3u);
-    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x3bu), 4);
-    S6502_AOT_COMPARE(ac, S6502_AOT_PAGE3_READ(0x03e7u), 4);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x720au, 0x7233u, 8u, _aot_08);
-
-  _aot_38:
-    S6502_AOT_HIT(38u, 3u);
-    S6502_AOT_LDA(S6502_AOT_PAGE3_READ(0x03e5u), 4);
-    S6502_AOT_COMPARE(ac, 0x01u, 2);
-    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN, !ZERO_p, 0x6557u, 0x65a0u, 39u, _aot_39, 11u, _aot_11);
-
-  _aot_39:
-    S6502_AOT_HIT(39u, 3u);
-    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x3bu), 4);
-    S6502_AOT_COMPARE(ac, S6502_AOT_PAGE3_READ(0x03e7u), 4);
-    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x655fu, 0x65a0u, 11u, _aot_11);
-
-  _aot_40:
-    S6502_AOT_HIT(40u, 3u);
-    S6502_AOT_INC_RAM(0x2082u, 6);
-    S6502_AOT_INX();
-    S6502_AOT_JMP_CHAIN(S6502_AOT_CHAIN_FAST, 0x650bu, 44u, _aot_44);
-
-  _aot_41:
-    S6502_AOT_HIT(41u, 3u);
-    S6502_AOT_LDA(S6502_AOT_PAGE3_READ(0x03e5u), 4);
-    S6502_AOT_COMPARE(ac, 0x01u, 2);
-    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN, !ZERO_p, 0x6aaeu, 0x6ae0u, 42u, _aot_42, 9u, _aot_09);
-
-  _aot_42:
-    S6502_AOT_HIT(42u, 3u);
+    S6502_AOT_HIT(29u, 3u);
     S6502_AOT_LDA(S6502_AOT_ZP_READ(0x3bu), 4);
     S6502_AOT_COMPARE(ac, S6502_AOT_PAGE3_READ(0x03e7u), 4);
     S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x6ab6u, 0x6ae0u, 9u, _aot_09);
 
-  _aot_43:
-    S6502_AOT_HIT(43u, 10u);
+  _aot_30:
+    S6502_AOT_HIT(30u, 10u);
     S6502_AOT_PHA();
     S6502_AOT_CLC();
     S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2au), 3);
@@ -1038,30 +981,296 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
     S6502_AOT_PLA();
     S6502_AOT_RTS();
 
+  _aot_31:
+    S6502_AOT_HIT(31u, 5u);
+    S6502_AOT_LDX(0x00u, 2);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x20u), 3);
+    S6502_AOT_SEC();
+    S6502_AOT_SBC(S6502_AOT_ZP_READ(0x23u), 3);
+    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN_FAST, ZERO_p, 0xd349u, 0xd34cu, 32u, _aot_32);
+
+  _aot_32:
+    S6502_AOT_HIT(32u, 6u);
+    S6502_AOT_PHP();
+    S6502_AOT_INX();
+    S6502_AOT_PLP();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x21u), 3);
+    S6502_AOT_SBC(S6502_AOT_ZP_READ(0x24u), 3);
+    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN_FAST, ZERO_p, 0xd352u, 0xd355u, 33u, _aot_33);
+
+  _aot_33:
+    S6502_AOT_HIT(33u, 8u);
+    S6502_AOT_PHP();
+    S6502_AOT_INX();
+    S6502_AOT_PLP();
+    S6502_AOT_PHP();
+    S6502_AOT_PLA();
+    S6502_AOT_ORA(0x02u, 2);
+    S6502_AOT_COMPARE(ix, 0x00u, 2);
+    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN_FAST, ZERO_p, 0xd35du, 0xd35fu, 34u, _aot_34);
+
+  _aot_34:
+    S6502_AOT_HIT(34u, 4u);
+    S6502_AOT_AND(0xfdu, 2);
+    S6502_AOT_PHA();
+    S6502_AOT_PLP();
+    S6502_AOT_RTS();
+
+  _aot_35:
+    S6502_AOT_HIT(35u, 1u);
+    S6502_AOT_JMP_CHAIN(S6502_AOT_CHAIN, 0x6a75u, 6u, _aot_06);
+
+  _aot_36:
+    S6502_AOT_HIT(36u, 17u);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e5u, 4);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2fu), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x2fu, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x30u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x30u, 4);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e6u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20cfu), 4);
+    S6502_AOT_TAX();
+    S6502_AOT_COMPARE(ix, 0x00u, 2);
+    S6502_AOT_BRANCH(ZERO_p, 0x6b41u, 0x6b4cu);
+
+  _aot_37:
+    S6502_AOT_HIT(37u, 12u);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2fu), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x2fu, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x30u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x30u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20e9u), 4);
+    S6502_AOT_STA_ZP(0x3au, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20eau), 4);
+    S6502_AOT_STA_ZP(0x3bu, 4);
+    S6502_AOT_JSR_CHAIN(S6502_AOT_CHAIN_FAST, 0x6c37u, 0x6646u, 13u, _aot_13);
+
+  _aot_38:
+    S6502_AOT_HIT(38u, 62u);
+    S6502_AOT_SEC();
+    S6502_AOT_SBC(0xe0u, 2);
+    S6502_AOT_STA_RAM(0x2000u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2029u), 4);
+    S6502_AOT_STA_RAM(0x2001u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x202au), 4);
+    S6502_AOT_STA_RAM(0x2002u, 4);
+    S6502_AOT_LDA(0x05u, 2);
+    S6502_AOT_STA(0x000cu, 3);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2000u), 4);
+    S6502_AOT_ASL_A();
+    S6502_AOT_TAX();
+    S6502_AOT_LDA(0x00u, 2);
+    S6502_AOT_ROL_A();
+    S6502_AOT_TAY();
+    S6502_AOT_TXA();
+    S6502_AOT_ASL_A();
+    S6502_AOT_TAX();
+    S6502_AOT_TYA();
+    S6502_AOT_ROL_A();
+    S6502_AOT_TAY();
+    S6502_AOT_TXA();
+    S6502_AOT_CLC();
+    S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2001u), 4);
+    S6502_AOT_STA(0x000du, 3);
+    S6502_AOT_TYA();
+    S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2002u), 4);
+    S6502_AOT_STA(0x000eu, 3);
+    S6502_AOT_STA_RAM(0x2000u, 4);
+    S6502_AOT_LDA(READ8(0x000du), 3);
+    S6502_AOT_INC(0x0cu, 5);
+    S6502_AOT_CLC();
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA(0x000du, 3);
+    S6502_AOT_LDA(0x00u, 2);
+    S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2000u), 4);
+    S6502_AOT_STA(0x000eu, 3);
+    S6502_AOT_STA_RAM(0x2000u, 4);
+    S6502_AOT_LDA(READ8(0x000du), 3);
+    S6502_AOT_INC(0x0cu, 5);
+    S6502_AOT_CLC();
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA(0x000du, 3);
+    S6502_AOT_LDA(0x00u, 2);
+    S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2000u), 4);
+    S6502_AOT_STA(0x000eu, 3);
+    S6502_AOT_STA_RAM(0x2000u, 4);
+    S6502_AOT_LDA(READ8(0x000du), 3);
+    S6502_AOT_INC(0x0cu, 5);
+    S6502_AOT_CLC();
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA(0x000du, 3);
+    S6502_AOT_LDA(0x00u, 2);
+    S6502_AOT_ADC(S6502_AOT_RAM_READ(0x2000u), 4);
+    S6502_AOT_STA(0x000eu, 3);
+    S6502_AOT_STA_RAM(0x2000u, 4);
+    S6502_AOT_PLA();
+    S6502_AOT_TAY();
+    S6502_AOT_PLA();
+    S6502_AOT_TAX();
+    S6502_AOT_PLP();
+    S6502_AOT_RTS();
+
+  _aot_39:
+    S6502_AOT_HIT(39u, 45u);
+    S6502_AOT_LDY(0x02u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_STA_ZP(0x20u, 3);
+    S6502_AOT_INY();
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_STA_ZP(0x21u, 3);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x20u), 3);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_INY();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x21u), 3);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x20u), 3);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x20u, 3);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x21u), 3);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x21u, 3);
+    S6502_AOT_LDY(0x02u, 2);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x20u), 3);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_INY();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x21u), 3);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_STA_ZP(0x23u, 3);
+    S6502_AOT_INY();
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_STA_ZP(0x24u, 3);
+    S6502_AOT_LDY(0x06u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x23u));
+    S6502_AOT_LDY(0x04u, 2);
+    S6502_AOT_SEC();
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_SBC(0x01u, 2);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_INY();
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_SBC(0x00u, 2);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x28u));
+    S6502_AOT_JMP(0x5010u);
+
+  _aot_40:
+    S6502_AOT_HIT(40u, 16u);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x31u));
+    S6502_AOT_AND(S6502_AOT_RAM_READ(0x20e3u), 4);
+    S6502_AOT_ORA(S6502_AOT_RAM_READ(0x20e6u), 4);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x31u));
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x31u), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x31u, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x32u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x32u, 4);
+    S6502_AOT_DEC_RAM(0x20d8u, 6);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20d8u), 4);
+    S6502_AOT_COMPARE(ac, 0x00u, 2);
+    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN, ZERO_p, 0x5cb3u, 0x5d05u, 41u, _aot_41);
+
+  _aot_41:
+    S6502_AOT_HIT(41u, 17u);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e5u, 4);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2fu), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x2fu, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x30u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x30u, 4);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e6u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20cfu), 4);
+    S6502_AOT_TAX();
+    S6502_AOT_COMPARE(ix, 0x00u, 2);
+    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN_FAST, ZERO_p, 0x5cdau, 0x5ce5u, 42u, _aot_42, 43u, _aot_43);
+
+  _aot_42:
+    S6502_AOT_HIT(42u, 5u);
+    S6502_AOT_LSR_M_RAM(0x20e5u);
+    S6502_AOT_ROR_M_RAM(0x20e6u);
+    S6502_AOT_DEX();
+    S6502_AOT_COMPARE(ix, 0x00u, 2);
+    S6502_AOT_BRANCH_BOTH(S6502_AOT_CHAIN_FAST, S6502_AOT_CHAIN_FAST, !ZERO_p, 0x5ce5u, 0x5cdau, 43u, _aot_43, 42u, _aot_42);
+
+  _aot_43:
+    S6502_AOT_HIT(43u, 13u);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20e6u), 4);
+    S6502_AOT_STA_INDY(S6502_AOT_ZP16(0x31u));
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x31u), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x31u, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x32u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x32u, 4);
+    S6502_AOT_DEC_RAM(0x20d8u, 6);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20d8u), 4);
+    S6502_AOT_COMPARE(ac, 0x00u, 2);
+    S6502_AOT_BRANCH_TARGET(S6502_AOT_CHAIN, !ZERO_p, 0x5d05u, 0x5cb3u, 41u, _aot_41);
+
   _aot_44:
-    S6502_AOT_HIT(44u, 2u);
-    S6502_AOT_COMPARE(ix, 0x10u, 2);
-    S6502_AOT_BRANCH_FALL(S6502_AOT_CHAIN, ZERO_p, 0x650fu, 0x653eu, 5u, _aot_05);
+    S6502_AOT_HIT(44u, 17u);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e5u, 4);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2fu), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x2fu, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x30u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x30u, 4);
+    S6502_AOT_LDY(0x00u, 2);
+    S6502_AOT_LDA_INDY(S6502_AOT_ZP16(0x2fu));
+    S6502_AOT_STA_RAM(0x20e6u, 4);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20cfu), 4);
+    S6502_AOT_TAX();
+    S6502_AOT_COMPARE(ix, 0x00u, 2);
+    S6502_AOT_BRANCH(ZERO_p, 0x5d3eu, 0x5d49u);
 
   _aot_45:
-    S6502_AOT_HIT(45u, 17u);
-    S6502_AOT_SEC();
-    S6502_AOT_LDA(0x20u, 2);
-    S6502_AOT_SBC(S6502_AOT_RAM_READ(0x2089u), 4);
-    S6502_AOT_STA_ZP(0x3au, 4);
-    S6502_AOT_LDA(0x0cu, 2);
-    S6502_AOT_SBC(S6502_AOT_RAM_READ(0x2085u), 4);
-    S6502_AOT_STA_ZP(0x3bu, 4);
-    S6502_AOT_SEC();
-    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x3au), 4);
-    S6502_AOT_SBC(0x0du, 2);
-    S6502_AOT_STA_ZP(0x38u, 4);
-    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x3bu), 4);
-    S6502_AOT_SBC(0x00u, 2);
-    S6502_AOT_STA_ZP(0x39u, 4);
-    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x2081u), 4);
-    S6502_AOT_COMPARE(ac, 0x08u, 2);
-    S6502_AOT_BRANCH(CARRY_p, 0x8816u, 0x8819u);
+    S6502_AOT_HIT(45u, 18u);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x2fu), 4);
+    S6502_AOT_ADC(0x01u, 2);
+    S6502_AOT_STA_ZP(0x2fu, 4);
+    S6502_AOT_LDA(S6502_AOT_ZP_READ(0x30u), 4);
+    S6502_AOT_ADC(0x00u, 2);
+    S6502_AOT_STA_ZP(0x30u, 4);
+    S6502_AOT_CLC();
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20deu), 4);
+    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x31u), 4);
+    S6502_AOT_STA_ZP(0x31u, 4);
+    S6502_AOT_LDA(0x00u, 2);
+    S6502_AOT_ADC(S6502_AOT_ZP_READ(0x32u), 4);
+    S6502_AOT_STA_ZP(0x32u, 4);
+    S6502_AOT_DEC_RAM(0x20dau, 6);
+    S6502_AOT_LDA(S6502_AOT_RAM_READ(0x20dau), 4);
+    S6502_AOT_COMPARE(ac, 0x00u, 2);
+    S6502_AOT_BRANCH(ZERO_p, 0x5dc6u, 0x5dc9u);
 
 #elif defined(S6502_AOT_UNDEFINE)
 #undef S6502_AOT_DISPATCH
@@ -1107,9 +1316,13 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
 #undef S6502_AOT_ROR_A
 #undef S6502_AOT_ASL_M
 #undef S6502_AOT_ASL_M_RAM
+#undef S6502_AOT_LSR_M
+#undef S6502_AOT_LSR_M_RAM
 #undef S6502_AOT_ROL_M
 #undef S6502_AOT_ROL_M_RAM
 #undef S6502_AOT_INC
+#undef S6502_AOT_ROR_M
+#undef S6502_AOT_ROR_M_RAM
 #undef S6502_AOT_INC_RAM
 #undef S6502_AOT_DEC
 #undef S6502_AOT_DEC_RAM
