@@ -36,12 +36,16 @@ typedef char T_9288_PublicSysBltFrameOffsetMustBe59c[
 #define SELECTOR_FIRST_ROW_Y 20
 #define SELECTOR_VISIBLE_ROWS 11
 #define SELECTOR_ACCEPT_DELAY_TICKS 100u
+#define SETTINGS_ROW_COUNT 3
 
 static const char k_rom_8_path[] = "a:\\gam4980\\8.BIN";
 static const char k_rom_e_path[] = "a:\\gam4980\\E.BIN";
 static const char k_game_root[] = "a:\\gam4980";
 static const char k_game_dir[] = "a:\\gam4980\\";
 static const char k_game_pattern[] = "a:\\gam4980\\*.*";
+static const char k_config_path[] = "a:\\gam4980\\GAM4980.CFG";
+static const char k_performance_log_path[] = "a:\\gam4980\\PERF.LOG";
+static const char k_append_mode[] = "ab";
 static const u8 k_expand_2x_pair[4] = {0xffu, 0xf0u, 0x0fu, 0x00u};
 #ifdef GAM4980_LOAD_DIAGNOSTICS
 static const char k_diag_path[] = "a:\\gam4980\\DIAG.TXT";
@@ -54,6 +58,32 @@ static const T_BYTE k_no_games[] = {
     0xc3, 0xbb, 0xd3, 0xd0, 0xd5, 0xd2, 0xb5, 0xbd, 0x20,
     '.', 'g', 'a', 'm', 0x20, 0xce, 0xc4, 0xbc, 0xfe, 0
 }; /* 没有找到 .gam 文件 (GBK) */
+static const T_BYTE k_settings_item[] = {
+    '[', 0xc9, 0xe8, 0xd6, 0xc3, ']', 0
+}; /* [设置] (GBK) */
+static const T_BYTE k_settings_title[] = {
+    0xc9, 0xe8, 0xd6, 0xc3, 0
+}; /* 设置 (GBK) */
+static const T_BYTE k_setting_aot_on[] = {
+    0xbc, 0xd3, 0xd4, 0xd8, 0xca, 0xb1, ' ', 'A', 'O', 'T',
+    0xa3, 0xba, 0xbf, 0xaa, 0
+}; /* 加载时 AOT：开 (GBK) */
+static const T_BYTE k_setting_aot_off[] = {
+    0xbc, 0xd3, 0xd4, 0xd8, 0xca, 0xb1, ' ', 'A', 'O', 'T',
+    0xa3, 0xba, 0xb9, 0xd8, 0
+}; /* 加载时 AOT：关 (GBK) */
+static const T_BYTE k_setting_debug_on[] = {
+    0xd0, 0xd4, 0xc4, 0xdc, 0xb5, 0xf7, 0xca, 0xd4,
+    0xa3, 0xba, 0xbf, 0xaa, 0
+}; /* 性能调试：开 (GBK) */
+static const T_BYTE k_setting_debug_off[] = {
+    0xd0, 0xd4, 0xc4, 0xdc, 0xb5, 0xf7, 0xca, 0xd4,
+    0xa3, 0xba, 0xb9, 0xd8, 0
+}; /* 性能调试：关 (GBK) */
+static const T_BYTE k_setting_return[] = {
+    0xb7, 0xb5, 0xbb, 0xd8, 0xd3, 0xce, 0xcf, 0xb7,
+    0xc1, 0xd0, 0xb1, 0xed, 0
+}; /* 返回游戏列表 (GBK) */
 
 static T_GUI_HWND g_main_window;
 static T_GUI_HDC g_game_hdc;
@@ -70,7 +100,16 @@ static int g_selector_top;
 static int g_selector_done;
 static int g_selector_accepted;
 static int g_selector_enter_armed;
+static int g_selector_settings_mode;
+static int g_settings_index;
+static int g_settings_dirty;
 static u32 g_selector_open_tick;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+static int g_setting_load_aot = 1;
+#else
+static int g_setting_load_aot;
+#endif
+static int g_setting_performance_debug;
 static u8 g_static_ram[GAM4980_RAM_SIZE]
     __attribute__((aligned(4), section(".scratch")));
 static FS_FILE *g_rom_files[2];
@@ -82,6 +121,26 @@ static u32 g_timer_frame_phase;
 static int g_first_frame_logged;
 #endif
 static int g_frame_tick_pending;
+typedef struct T_GAM4980_PerformanceMetrics {
+    u32 load_begin_tick;
+    u32 session_begin_tick;
+    u32 game_size;
+    u32 flash_size;
+    u32 core_init_ticks;
+    u32 game_read_ticks;
+    u32 game_header_ticks;
+    u32 load_total_ticks;
+    u32 first_frame_ticks;
+    u32 session_ticks;
+    u32 timer_batches;
+    u32 guest_frames;
+    u32 render_updates;
+    u32 screen_submissions;
+    u32 rom_reads;
+    u32 rom_bytes;
+} T_GAM4980_PerformanceMetrics;
+
+static T_GAM4980_PerformanceMetrics g_performance;
 /* The 9288 GUI game interface submits a complete 0x4b00-byte virtual screen. */
 static u8 g_screen_frame[SCREEN_FRAME_BYTES]
     __attribute__((aligned(4), section(".scratch")));
@@ -278,6 +337,75 @@ static int write_exact(FS_FILE *file, const u8 *data, u32 size)
     return 1;
 }
 
+static u8 settings_checksum(const u8 *data, u32 size)
+{
+    u8 checksum = 0xa5u;
+
+    while (size-- != 0u)
+        checksum ^= *data++;
+    return checksum;
+}
+
+static void load_settings(void)
+{
+    u8 data[8];
+    FS_FILE *file = fs_fopen(k_config_path, FS_O_RDONLY);
+
+    g_setting_performance_debug = 0;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    g_setting_load_aot = 1;
+#else
+    g_setting_load_aot = 0;
+#endif
+    g_settings_dirty = 0;
+    if (!file)
+        return;
+    if (fs_fseek(file, 0, SEEK_END) < 0 ||
+        fs_ftell(file) != (long)sizeof(data) ||
+        fs_fseek(file, 0, SEEK_SET) < 0 || !read_exact(file, data, sizeof(data))) {
+        fs_fclose(file);
+        return;
+    }
+    fs_fclose(file);
+    if (data[0] != 'G' || data[1] != '4' || data[2] != '9' ||
+        data[3] != '8' || data[4] != 1u ||
+        data[6] != settings_checksum(data, 6u) || data[7] != (u8)~data[6])
+        return;
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    g_setting_load_aot = (data[5] & 0x01u) != 0u;
+#endif
+    g_setting_performance_debug = (data[5] & 0x02u) != 0u;
+}
+
+static void save_settings(void)
+{
+    u8 data[8] = {'G', '4', '9', '8', 1u, 0u, 0u, 0u};
+    FS_FILE *file;
+
+    if (!g_settings_dirty)
+        return;
+    if (g_setting_load_aot)
+        data[5] |= 0x01u;
+    if (g_setting_performance_debug)
+        data[5] |= 0x02u;
+    data[6] = settings_checksum(data, 6u);
+    data[7] = (u8)~data[6];
+    file = fs_fopen(k_config_path, FS_O_WRONLY);
+    if (!file)
+        return;
+    if (write_exact(file, data, sizeof(data))) {
+        (void)fs_update(file);
+        g_settings_dirty = 0;
+    }
+    fs_fclose(file);
+    (void)fs_flush_cache();
+}
+
+static void reset_performance_metrics(void)
+{
+    memset(&g_performance, 0, sizeof(g_performance));
+}
+
 static int open_rom_file(u8 region, const char *path)
 {
     FS_FILE *file = fs_fopen(path, FS_O_RDONLY);
@@ -309,6 +437,10 @@ static int read_rom_bank(
     FS_FILE *file;
 
     (void)context;
+    if (g_setting_performance_debug) {
+        ++g_performance.rom_reads;
+        g_performance.rom_bytes += size;
+    }
 #ifdef GAM4980_MEMORY_DIAGNOSTICS
     ++g_gam4980_memory_diagnostic.rom_reads;
     g_gam4980_memory_diagnostic.last_rom_region = region;
@@ -445,17 +577,18 @@ static int copy_selected_game_path(void)
 {
     u32 directory_length = byte_length(k_game_dir);
     u32 name_length;
+    int game_index = g_selector_index - 1;
 
-    if (g_selector_index < 0 || g_selector_index >= g_game_count)
+    if (game_index < 0 || game_index >= g_game_count)
         return 0;
-    name_length = byte_length(g_game_names[g_selector_index]);
+    name_length = byte_length(g_game_names[game_index]);
     if (directory_length + name_length + 1u > sizeof(g_game_path))
         return 0;
     if (!copy_path(g_game_path, k_game_dir, sizeof(g_game_path)))
         return 0;
     return copy_path(
         g_game_path + directory_length,
-        g_game_names[g_selector_index],
+        g_game_names[game_index],
         sizeof(g_game_path) - directory_length
     );
 }
@@ -512,6 +645,265 @@ static void write_save(void)
     (void)fs_flush_cache();
 }
 
+static void performance_log_text(FS_FILE *file, const char *text)
+{
+    if (file && text)
+        (void)fs_fwrite(text, 1, byte_length(text), file);
+}
+
+static char *append_text(char *out, const char *text)
+{
+    while (text && *text)
+        *out++ = *text++;
+    return out;
+}
+
+static char *append_u32_decimal(char *out, u32 value)
+{
+    char reversed[10];
+    int count = 0;
+
+    do {
+        reversed[count++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value && count < (int)sizeof(reversed));
+    while (count > 0)
+        *out++ = reversed[--count];
+    return out;
+}
+
+static char *append_u32_hex(char *out, u32 value, int digits)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    int shift = (digits - 1) * 4;
+
+    while (shift >= 0) {
+        *out++ = hex[(value >> (u32)shift) & 0x0fu];
+        shift -= 4;
+    }
+    return out;
+}
+
+static void performance_log_u32(
+    FS_FILE *file, const char *key, u32 value
+)
+{
+    char line[64];
+    char *out = append_text(line, key);
+
+    *out++ = '=';
+    out = append_u32_decimal(out, value);
+    *out++ = '\r';
+    *out++ = '\n';
+    (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+}
+
+#if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+static char *append_u64_hex(char *out, u64 value)
+{
+    union {
+        u64 value;
+        u32 words[2];
+    } split;
+
+    split.value = value;
+    out = append_u32_hex(out, split.words[1], 8);
+    return append_u32_hex(out, split.words[0], 8);
+}
+
+static void performance_log_u64_hex(
+    FS_FILE *file, const char *key, u64 value
+)
+{
+    char line[72];
+    char *out = append_text(line, key);
+
+    *out++ = '=';
+    out = append_u64_hex(out, value);
+    *out++ = '\r';
+    *out++ = '\n';
+    (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+}
+#endif
+
+#if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
+static void performance_log_aot_blocks(FS_FILE *file)
+{
+    u32 block_id;
+
+    performance_log_u64_hex(
+        file, "static_aot_instructions", gam4980_aot_instruction_count()
+    );
+    for (block_id = 0; block_id < gam4980_aot_block_count(); ++block_id) {
+        u64 hits = gam4980_aot_block_hit_count(block_id);
+        char line[96];
+        char *out;
+
+        if (!hits)
+            continue;
+        out = append_text(line, "static_block=");
+        out = append_u32_decimal(out, block_id);
+        out = append_text(out, " hits=");
+        out = append_u64_hex(out, hits);
+        out = append_text(out, " bank2=");
+        out = append_u32_hex(out, gam4980_aot_block_bank2(block_id), 4);
+        out = append_text(out, " varies=");
+        *out++ = gam4980_aot_block_bank2_varies(block_id) ? '1' : '0';
+        *out++ = '\r';
+        *out++ = '\n';
+        (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+    }
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    performance_log_u32(
+        file, "game_aot_entries", gam4980_game_aot_entry_count()
+    );
+    performance_log_u32(
+        file, "game_aot_enabled_end", gam4980_game_aot_enabled() != 0
+    );
+    performance_log_u64_hex(
+        file, "game_aot_instructions",
+        gam4980_game_aot_instruction_count()
+    );
+    for (block_id = 0; block_id < gam4980_game_aot_entry_count(); ++block_id) {
+        u64 hits = gam4980_game_aot_entry_hit_count(block_id);
+        char line[104];
+        char *out;
+
+        if (!hits)
+            continue;
+        out = append_text(line, "game_block=");
+        out = append_u32_decimal(out, block_id);
+        out = append_text(out, " pc=");
+        out = append_u32_hex(
+            out, gam4980_game_aot_entry_physical_pc(block_id), 6
+        );
+        out = append_text(out, " pattern=");
+        out = append_u32_decimal(
+            out, gam4980_game_aot_entry_pattern(block_id) + 1u
+        );
+        out = append_text(out, " hits=");
+        out = append_u64_hex(out, hits);
+        *out++ = '\r';
+        *out++ = '\n';
+        (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+    }
+#endif
+}
+#endif
+
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+static void performance_log_runtime_samples(FS_FILE *file)
+{
+    u32 sample_id;
+
+    performance_log_u32(
+        file, "core_exec_calls", gam4980_performance_exec_calls()
+    );
+    performance_log_u64_hex(
+        file, "guest_cycles", gam4980_performance_guest_cycles()
+    );
+    performance_log_u32(
+        file, "pc_sample_count", gam4980_performance_sample_count()
+    );
+    performance_log_u32(
+        file, "pc_sample_dropped", gam4980_performance_sample_dropped()
+    );
+    for (sample_id = 0;
+         sample_id < gam4980_performance_sample_capacity(); ++sample_id) {
+        u32 hits = gam4980_performance_sample_hits(sample_id);
+        char line[88];
+        char *out;
+
+        if (!hits)
+            continue;
+        out = append_text(line, "pc_sample vpc=");
+        out = append_u32_hex(
+            out, gam4980_performance_sample_virtual_pc(sample_id), 4
+        );
+        out = append_text(out, " ppc=");
+        out = append_u32_hex(
+            out, gam4980_performance_sample_physical_pc(sample_id), 6
+        );
+        out = append_text(out, " hits=");
+        out = append_u32_decimal(out, hits);
+        *out++ = '\r';
+        *out++ = '\n';
+        (void)fs_fwrite(line, 1, (size_t)(out - line), file);
+    }
+}
+#endif
+
+static void write_performance_log(void)
+{
+    const char *name;
+    FS_FILE *file;
+
+    if (!g_setting_performance_debug)
+        return;
+    file = fs_fopen(k_performance_log_path, k_append_mode);
+    if (!file)
+        file = fs_fopen(k_performance_log_path, FS_O_WRONLY);
+    if (!file)
+        return;
+    performance_log_text(file, "\r\n[GAM4980 PERF 1]\r\n");
+    performance_log_text(file, "game=");
+    name = base_name(g_game_path);
+    performance_log_text(file, name);
+    performance_log_text(file, "\r\n");
+    performance_log_u32(file, "load_aot", g_setting_load_aot != 0);
+    performance_log_u32(file, "debug", 1u);
+    performance_log_u32(file, "game_size", g_performance.game_size);
+    performance_log_u32(file, "flash_size", g_performance.flash_size);
+    performance_log_u32(
+        file, "core_init_ticks", g_performance.core_init_ticks
+    );
+    performance_log_u32(
+        file, "game_read_ticks", g_performance.game_read_ticks
+    );
+    performance_log_u32(
+        file, "game_header_ticks", g_performance.game_header_ticks
+    );
+    performance_log_u32(
+        file, "load_total_ticks", g_performance.load_total_ticks
+    );
+    performance_log_u32(
+        file, "first_frame_ticks", g_performance.first_frame_ticks
+    );
+    performance_log_u32(file, "session_ticks", g_performance.session_ticks);
+    performance_log_u32(
+        file, "timer_batches", g_performance.timer_batches
+    );
+    performance_log_u32(file, "guest_frames", g_performance.guest_frames);
+    performance_log_u32(
+        file, "render_updates", g_performance.render_updates
+    );
+    performance_log_u32(
+        file, "screen_submissions", g_performance.screen_submissions
+    );
+    performance_log_u32(file, "rom_reads", g_performance.rom_reads);
+    performance_log_u32(file, "rom_bytes", g_performance.rom_bytes);
+    performance_log_u32(file, "shutdown_pc", gam4980_shutdown_pc());
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    performance_log_u32(
+        file, "game_aot_entries", gam4980_game_aot_entry_count()
+    );
+    performance_log_u32(
+        file, "game_aot_enabled_end", gam4980_game_aot_enabled() != 0
+    );
+#endif
+#if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
+    performance_log_aot_blocks(file);
+#endif
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+    performance_log_runtime_samples(file);
+#endif
+    performance_log_text(file, "[END]\r\n");
+    (void)fs_update(file);
+    fs_fclose(file);
+    (void)fs_flush_cache();
+}
+
 static void keep_selector_visible(void)
 {
     if (g_selector_index < g_selector_top)
@@ -525,55 +917,144 @@ static void keep_selector_visible(void)
 
 static void selector_move(T_GUI_HWND window, int delta)
 {
-    if (g_game_count <= 0)
-        return;
-    g_selector_index += delta;
-    if (g_selector_index < 0)
-        g_selector_index = 0;
-    if (g_selector_index >= g_game_count)
-        g_selector_index = g_game_count - 1;
-    keep_selector_visible();
+    int *index = g_selector_settings_mode
+        ? &g_settings_index : &g_selector_index;
+    int count = g_selector_settings_mode
+        ? SETTINGS_ROW_COUNT : g_game_count + 1;
+
+    *index += delta;
+    if (*index < 0)
+        *index = 0;
+    if (*index >= count)
+        *index = count - 1;
+    if (!g_selector_settings_mode)
+        keep_selector_visible();
     (void)fnGUI_InvalidateRect(window, 0, TRUE);
+}
+
+static void selector_leave_settings(T_GUI_HWND window)
+{
+    save_settings();
+    g_selector_settings_mode = 0;
+    /* Return to a playable row instead of leaving [Settings] selected. */
+    g_selector_index = g_game_count > 0 ? 1 : 0;
+    g_selector_top = 0;
+    (void)fnGUI_InvalidateRect(window, 0, TRUE);
+}
+
+static void selector_toggle_setting(T_GUI_HWND window)
+{
+    if (g_settings_index == 0) {
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+        g_setting_load_aot = !g_setting_load_aot;
+        g_settings_dirty = 1;
+#endif
+    } else if (g_settings_index == 1) {
+        g_setting_performance_debug = !g_setting_performance_debug;
+        g_settings_dirty = 1;
+    }
+    (void)fnGUI_InvalidateRect(window, 0, TRUE);
+}
+
+static void selector_activate(T_GUI_HWND window)
+{
+    if (g_selector_settings_mode) {
+        if (g_settings_index < SETTINGS_ROW_COUNT - 1)
+            selector_toggle_setting(window);
+        else
+            selector_leave_settings(window);
+        return;
+    }
+    if (g_selector_index == 0) {
+        g_selector_settings_mode = 1;
+        g_settings_index = 0;
+        (void)fnGUI_InvalidateRect(window, 0, TRUE);
+        return;
+    }
+    if (g_game_count > 0) {
+        g_selector_accepted = 1;
+        g_selector_done = 1;
+    }
+}
+
+static void selector_draw_row(
+    T_GUI_HDC hdc, int y, int selected, const T_BYTE *text
+)
+{
+    if (selected) {
+        (void)fnGUI_SetBrushColor(hdc, COLOR_BLACK);
+        fnGUI_FillBox(hdc, 0, y, GAM_SCREEN_WIDTH, SELECTOR_ROW_HEIGHT);
+        (void)fnGUI_SetTextColor(hdc, COLOR_LIGHTWHITE);
+    } else {
+        (void)fnGUI_SetTextColor(hdc, COLOR_BLACK);
+    }
+    (void)fnGUI_TextOut(hdc, 4, y + 1, text);
+}
+
+static void selector_draw_settings(T_GUI_HDC hdc)
+{
+    const T_BYTE *rows[SETTINGS_ROW_COUNT];
+    int row;
+
+    rows[0] = g_setting_load_aot ? k_setting_aot_on : k_setting_aot_off;
+    rows[1] = g_setting_performance_debug
+        ? k_setting_debug_on : k_setting_debug_off;
+    rows[2] = k_setting_return;
+    (void)fnGUI_TextOut(hdc, 4, 2, k_settings_title);
+    for (row = 0; row < SETTINGS_ROW_COUNT; ++row) {
+        selector_draw_row(
+            hdc, SELECTOR_FIRST_ROW_Y + row * SELECTOR_ROW_HEIGHT,
+            row == g_settings_index, rows[row]
+        );
+    }
+}
+
+static void selector_draw_games(T_GUI_HDC hdc)
+{
+    int row;
+
+    (void)fnGUI_TextOut(hdc, 4, 2, k_selector_directory);
+    for (row = 0; row < SELECTOR_VISIBLE_ROWS; ++row) {
+        int index = g_selector_top + row;
+        int y = SELECTOR_FIRST_ROW_Y + row * SELECTOR_ROW_HEIGHT;
+        const T_BYTE *text;
+
+        if (index >= g_game_count + 1)
+            break;
+        text = index == 0
+            ? k_settings_item
+            : (const T_BYTE *)g_game_names[index - 1];
+        selector_draw_row(hdc, y, index == g_selector_index, text);
+    }
+    if (g_game_count == 0)
+        (void)fnGUI_TextOut(
+            hdc, 4, SELECTOR_FIRST_ROW_Y + SELECTOR_ROW_HEIGHT + 1,
+            k_no_games
+        );
 }
 
 static void selector_draw(T_GUI_HWND window)
 {
     T_GUI_HDC hdc = fnGUI_BeginPaint(window);
-    int row;
 
     (void)fnGUI_SetBkMode(hdc, BM_TRANSPARENT);
     (void)fnGUI_SetBrushColor(hdc, COLOR_LIGHTWHITE);
     fnGUI_FillBox(hdc, 0, 0, GAM_SCREEN_WIDTH, GAM_SCREEN_HEIGHT);
     (void)fnGUI_SetTextColor(hdc, COLOR_BLACK);
-    (void)fnGUI_TextOut(
-        hdc, 4, 2, k_selector_directory
-    );
-
-    if (g_game_count == 0) {
-        (void)fnGUI_TextOut(hdc, 4, SELECTOR_FIRST_ROW_Y, k_no_games);
-    } else {
-        for (row = 0; row < SELECTOR_VISIBLE_ROWS; ++row) {
-            int index = g_selector_top + row;
-            int y = SELECTOR_FIRST_ROW_Y + row * SELECTOR_ROW_HEIGHT;
-
-            if (index >= g_game_count)
-                break;
-            if (index == g_selector_index) {
-                (void)fnGUI_SetBrushColor(hdc, COLOR_BLACK);
-                fnGUI_FillBox(
-                    hdc, 0, y, GAM_SCREEN_WIDTH, SELECTOR_ROW_HEIGHT
-                );
-                (void)fnGUI_SetTextColor(hdc, COLOR_LIGHTWHITE);
-            } else {
-                (void)fnGUI_SetTextColor(hdc, COLOR_BLACK);
-            }
-            (void)fnGUI_TextOut(
-                hdc, 4, y + 1,
-                (const T_BYTE *)g_game_names[index]
-            );
-        }
-    }
+    if (g_selector_settings_mode)
+        selector_draw_settings(hdc);
+    else
+        selector_draw_games(hdc);
     fnGUI_EndPaint(window, hdc);
+}
+
+/* Keep the settings row at index zero and game rows at one-based indices. */
+static void selector_reset_position(void)
+{
+    g_selector_index = g_game_count > 0 ? 1 : 0;
+    if (g_selector_index < 0)
+        g_selector_index = 0;
+    g_selector_top = 0;
 }
 
 static T_WORD selector_window_proc(
@@ -588,7 +1069,7 @@ static T_WORD selector_window_proc(
         switch (scancode) {
         case SCANCODE_ENTER:
         case SCANCODE_KEYPADENTER:
-            if (g_game_count > 0 && tick_elapsed(
+            if (tick_elapsed(
                     g_selector_open_tick, (u32)fnGUI_GetTickCount()
                 ) >= SELECTOR_ACCEPT_DELAY_TICKS)
                 g_selector_enter_armed = 1;
@@ -602,12 +1083,28 @@ static T_WORD selector_window_proc(
             selector_move(window, 1);
             break;
         case SCANCODE_PAGEUP:
-            selector_move(window, -SELECTOR_VISIBLE_ROWS);
+            if (!g_selector_settings_mode)
+                selector_move(window, -SELECTOR_VISIBLE_ROWS);
             break;
         case SCANCODE_PAGEDOWN:
-            selector_move(window, SELECTOR_VISIBLE_ROWS);
+            if (!g_selector_settings_mode)
+                selector_move(window, SELECTOR_VISIBLE_ROWS);
+            break;
+        case SCANCODE_CURSORLEFT:
+        case SCANCODE_CURSORBLOCKLEFT:
+        case SCANCODE_CURSORRIGHT:
+        case SCANCODE_CURSORBLOCKRIGHT:
+            if (g_selector_settings_mode &&
+                g_settings_index < SETTINGS_ROW_COUNT - 1)
+                selector_toggle_setting(window);
             break;
         case SCANCODE_ESCAPE:
+            if (g_selector_settings_mode) {
+                selector_leave_settings(window);
+                break;
+            }
+            g_selector_done = 1;
+            break;
         case SCANCODE_F12:
             g_selector_done = 1;
             break;
@@ -624,8 +1121,7 @@ static T_WORD selector_window_proc(
              * launch key from passing through and keeps its release edge from
              * racing window teardown and the first NAND reads. */
             g_selector_enter_armed = 0;
-            g_selector_accepted = 1;
-            g_selector_done = 1;
+            selector_activate(window);
         }
         return 0;
     case MSG_TIMER:
@@ -650,11 +1146,12 @@ static int select_game(void)
     T_GUI_Msg message;
 
     (void)enumerate_games();
-    g_selector_index = 0;
-    g_selector_top = 0;
+    selector_reset_position();
     g_selector_done = 0;
     g_selector_accepted = 0;
     g_selector_enter_armed = 0;
+    g_selector_settings_mode = 0;
+    g_settings_index = 0;
     memset(&info, 0, sizeof(info));
     info.dwStyle = WS_VISIBLE | WS_CAPTION;
     info.dwExStyle = WS_EX_NONE;
@@ -675,6 +1172,7 @@ static int select_game(void)
         fnGUI_TranslateMessage(&message);
         fnGUI_DispatchMessage(&message);
     }
+    save_settings();
     destroy_selector_window();
     return g_selector_accepted && copy_selected_game_path();
 }
@@ -696,7 +1194,9 @@ static int load_game(const char *path)
 {
     u8 header[GAM4980_GAME_HEADER_SIZE];
     FS_FILE *file = fs_fopen(path, FS_O_RDONLY);
+    u32 operation_tick;
     long size;
+    int header_result;
 
     if (!file)
         return 0;
@@ -706,6 +1206,7 @@ static int load_game(const char *path)
     }
     size = fs_ftell(file);
     write_load_diagnostic(0x08u, (u32)size, 0u);
+    operation_tick = (u32)fnGUI_GetTickCount();
     if (size < (long)GAM4980_GAME_HEADER_SIZE ||
         size > (long)GAM4980_GAME_MAX_SIZE ||
         fs_fseek(file, 0, SEEK_SET) < 0 ||
@@ -716,9 +1217,16 @@ static int load_game(const char *path)
         return 0;
     }
     fs_fclose(file);
+    g_performance.game_read_ticks = tick_elapsed(
+        operation_tick, (u32)fnGUI_GetTickCount()
+    );
     write_load_diagnostic(0x09u, (u32)size, 0u);
-    if (gam4980_load_game_header(header, (u32)size) <= 0 ||
-        !make_save_path(path))
+    operation_tick = (u32)fnGUI_GetTickCount();
+    header_result = gam4980_load_game_header(header, (u32)size);
+    g_performance.game_header_ticks = tick_elapsed(
+        operation_tick, (u32)fnGUI_GetTickCount()
+    );
+    if (header_result <= 0 || !make_save_path(path))
         return 0;
     load_save();
     gam4980_save_mark_clean();
@@ -742,6 +1250,8 @@ static void submit_screen_frame(void)
     );
     if (sys_blt_frame) {
         sys_blt_frame(g_game_hdc, g_screen_frame);
+        if (g_setting_performance_debug)
+            ++g_performance.screen_submissions;
         /* Thunder Fighter follows the frame copy with this exact call so the
          * GUI paint path transfers the updated client DC to the LCD. */
         (void)fnGUI_InvalidateRect(
@@ -896,6 +1406,7 @@ static u8 map_scancode(T_UHWORD scancode)
 static void run_timer_frame(void)
 {
     u32 frames_this_tick;
+    u32 frame_count;
 
     /* On 9288, GUI timer speed 20 delivers about 20 MSG_TIMER events per
      * second.  Advance three 60 Hz guest frames per event; the phase form is
@@ -903,6 +1414,16 @@ static void run_timer_frame(void)
     g_timer_frame_phase += FRAME_RATE_HZ;
     frames_this_tick = g_timer_frame_phase / GUI_TIMER_HZ;
     g_timer_frame_phase %= GUI_TIMER_HZ;
+    frame_count = frames_this_tick;
+    if (g_setting_performance_debug) {
+        ++g_performance.timer_batches;
+        g_performance.guest_frames += frame_count;
+        if (!g_performance.first_frame_ticks)
+            g_performance.first_frame_ticks = tick_elapsed(
+                g_performance.load_begin_tick,
+                (u32)fnGUI_GetTickCount()
+            );
+    }
     while (frames_this_tick-- != 0u) {
         gam4980_step_frame();
 #ifdef GAM4980_MEMORY_DIAGNOSTICS
@@ -915,8 +1436,11 @@ static void run_timer_frame(void)
         }
 #endif
     }
-    if (gam4980_render_frame())
+    if (gam4980_render_frame()) {
+        if (g_setting_performance_debug)
+            ++g_performance.render_updates;
         present_2x(gam4980_packed_frame());
+    }
     if (gam4980_shutdown_requested())
         g_close_requested = 1;
     if (g_escape_down && ++g_exit_hold_timer_ticks >= EXIT_HOLD_TIMER_TICKS)
@@ -1069,6 +1593,7 @@ static int run_emulator_window(void)
         destroy_emulator_window();
         return 0;
     }
+    g_performance.session_begin_tick = (u32)fnGUI_GetTickCount();
 
     while (!g_close_requested && !gam4980_shutdown_requested()) {
         /* Thunder Fighter pumps the global GUI queue during gameplay.  Timer
@@ -1087,6 +1612,11 @@ static int run_emulator_window(void)
         }
     }
 
+    if (g_setting_performance_debug)
+        g_performance.session_ticks = tick_elapsed(
+            g_performance.session_begin_tick,
+            (u32)fnGUI_GetTickCount()
+        );
     (void)fnGUI_KillTimer(g_main_window, FRAME_TIMER_ID);
     destroy_emulator_window();
     return 1;
@@ -1097,13 +1627,17 @@ T_WORD App_Main(void)
     int core_status;
     int initialized = 0;
     int rom_status;
+    u32 operation_tick;
     long game_size;
 
     (void)fs_mkdir(k_game_root);
+    load_settings();
     memory_diagnostic(0x00u, 0u, 0u);
     write_load_diagnostic(0x00u, 0u, 0u);
     if (!select_game())
         return 0;
+    reset_performance_metrics();
+    g_performance.load_begin_tick = (u32)fnGUI_GetTickCount();
     memory_diagnostic(0x01u, 0u, 0u);
     write_load_diagnostic(0x01u, 0u, 0u);
     if (!create_emulator_window()) {
@@ -1113,6 +1647,7 @@ T_WORD App_Main(void)
     memory_diagnostic(0x02u, (u32)(unsigned long)g_main_window, 0u);
     write_load_diagnostic(0x02u, (u32)(unsigned long)g_main_window, 0u);
     game_size = get_game_size(g_game_path);
+    g_performance.game_size = game_size > 0 ? (u32)game_size : 0u;
     write_load_diagnostic(
         0x03u, (u32)game_size,
         (0x15000u + (u32)game_size + 0xfffu) & ~0xfffu
@@ -1129,6 +1664,7 @@ T_WORD App_Main(void)
         destroy_emulator_window();
         return -1;
     }
+    g_performance.flash_size = g_buffers.flash_size;
     memory_diagnostic(
         0x03u, (u32)(unsigned long)g_buffers.flash, g_buffers.flash_size
     );
@@ -1150,7 +1686,18 @@ T_WORD App_Main(void)
     memory_diagnostic(0x04u, 0u, 0u);
     write_load_diagnostic(0x05u, 0u, 0u);
     write_load_diagnostic(0x06u, g_buffers.flash_size, 0u);
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    gam4980_set_game_load_aot_enabled(g_setting_load_aot);
+#endif
+#if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    gam4980_set_performance_debug(g_setting_performance_debug);
+#endif
+    operation_tick = (u32)fnGUI_GetTickCount();
     core_status = gam4980_init(&g_buffers);
+    g_performance.core_init_ticks = tick_elapsed(
+        operation_tick, (u32)fnGUI_GetTickCount()
+    );
     if (core_status <= 0) {
         char diagnostic[] = "Core initialization stage X failed.";
 
@@ -1170,6 +1717,9 @@ T_WORD App_Main(void)
         destroy_emulator_window();
         return -4;
     }
+    g_performance.load_total_ticks = tick_elapsed(
+        g_performance.load_begin_tick, (u32)fnGUI_GetTickCount()
+    );
     memory_diagnostic(0x06u, (u32)game_size, 0u);
     if (!run_emulator_window()) {
         show_error("Could not create the GAM4980 window.");
@@ -1178,6 +1728,7 @@ T_WORD App_Main(void)
     }
     if (initialized)
         write_save();
+    write_performance_log();
     release_buffers();
     return 0;
 }

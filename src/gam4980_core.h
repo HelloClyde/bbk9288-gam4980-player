@@ -133,6 +133,18 @@ int gam4980_save_dirty(void);
 void gam4980_save_mark_clean(void);
 int gam4980_shutdown_requested(void);
 u16 gam4980_shutdown_pc(void);
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+void gam4980_set_game_load_aot_enabled(int enabled);
+u32 gam4980_game_aot_entry_count(void);
+int gam4980_game_aot_enabled(void);
+u32 gam4980_game_aot_entry_physical_pc(u32 entry_id);
+u32 gam4980_game_aot_entry_pattern(u32 entry_id);
+#endif
+#if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+void gam4980_set_performance_debug(int enabled);
+int gam4980_performance_debug_enabled(void);
+#endif
 #if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
 u64 gam4980_aot_instruction_count(void);
 u32 gam4980_aot_block_count(void);
@@ -141,9 +153,18 @@ u16 gam4980_aot_block_bank2(u32 block_id);
 int gam4980_aot_block_bank2_varies(u32 block_id);
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
 u64 gam4980_game_aot_instruction_count(void);
-u32 gam4980_game_aot_entry_count(void);
-int gam4980_game_aot_enabled(void);
+u64 gam4980_game_aot_entry_hit_count(u32 entry_id);
 #endif
+#endif
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+u32 gam4980_performance_exec_calls(void);
+u64 gam4980_performance_guest_cycles(void);
+u32 gam4980_performance_sample_count(void);
+u32 gam4980_performance_sample_capacity(void);
+u16 gam4980_performance_sample_virtual_pc(u32 sample_id);
+u32 gam4980_performance_sample_physical_pc(u32 sample_id);
+u32 gam4980_performance_sample_hits(u32 sample_id);
+u32 gam4980_performance_sample_dropped(void);
 #endif
 #ifdef GAM4980_STATE_DIAGNOSTICS
 u64 gam4980_state_hash(void);

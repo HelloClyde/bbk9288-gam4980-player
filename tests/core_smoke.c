@@ -105,6 +105,17 @@ int main(int argc, char **argv)
         buffers.rom_e = 0;
         buffers.rom_read = stream_rom_read;
     }
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+    gam4980_set_game_load_aot_enabled(
+        getenv("GAM4980_DISABLE_GAME_LOAD_AOT") == 0
+    );
+#endif
+#if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    gam4980_set_performance_debug(
+        getenv("GAM4980_DISABLE_PERFORMANCE_DEBUG") == 0
+    );
+#endif
     result = gam4980_init(&buffers);
     if (result <= 0) {
         fprintf(stderr, "gam4980_init failed: %d\n", result);
@@ -151,6 +162,15 @@ int main(int argc, char **argv)
         gam4980_game_aot_enabled()
     );
 #endif
+#endif
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+    printf(
+        "runtime perf calls=%u cycles=%llu samples=%u dropped=%u\n",
+        (unsigned)gam4980_performance_exec_calls(),
+        (unsigned long long)gam4980_performance_guest_cycles(),
+        (unsigned)gam4980_performance_sample_count(),
+        (unsigned)gam4980_performance_sample_dropped()
+    );
 #endif
 #ifdef GAM4980_STATE_DIAGNOSTICS
     printf(

@@ -490,6 +490,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "could not load exact 2 MiB ROM files\n");
         goto cleanup;
     }
+#if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
+    gam4980_set_performance_debug(1);
+#endif
     if (gam4980_init(&buffers) <= 0) {
         fprintf(stderr, "could not initialize the core\n");
         goto cleanup;

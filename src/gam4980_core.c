@@ -109,6 +109,10 @@ static void mem_write(uint16_t addr, uint8_t val);
 #ifndef GAM4980_CACHE_STORAGE
 #define GAM4980_CACHE_STORAGE
 #endif
+#if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+static int s6502_performance_debug;
+#endif
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
 #ifndef GAM4980_ENABLE_AOT
 #error GAM4980_ENABLE_GAME_LOAD_AOT requires GAM4980_ENABLE_AOT
@@ -133,12 +137,20 @@ static uint16_t *s6502_game_aot_banks;
 static uint32_t s6502_game_aot_physical_end;
 static uint32_t s6502_game_aot_storage_end;
 static int s6502_game_aot_enabled;
+static int s6502_game_aot_requested = 1;
 static void s6502_game_aot_prepare(const uint8_t *game, uint32_t size);
 static void s6502_game_aot_invalidate(uint32_t offset, uint32_t size);
 #ifdef GAM4980_AOT_DIAGNOSTICS
 static uint64_t s6502_game_aot_instruction_hits;
-#define S6502_GAME_AOT_HIT(instructions) \
-    (s6502_game_aot_instruction_hits += (instructions))
+static uint64_t s6502_game_aot_entry_hits[S6502_GAME_AOT_MAX_ENTRIES]
+    GAM4980_CACHE_STORAGE;
+static __attribute__((noinline)) void s6502_game_aot_hit(
+    uint32_t entry_id, uint32_t instructions
+);
+#define S6502_GAME_AOT_HIT(instructions) do {                              \
+    if (s6502_performance_debug)                                            \
+        s6502_game_aot_hit(game_aot_entry_id - 1u, (instructions));         \
+} while (0)
 #else
 #define S6502_GAME_AOT_HIT(instructions) ((void)0)
 #endif
@@ -177,8 +189,13 @@ static uint64_t s6502_game_aot_instruction_hits;
 static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id);
 static __attribute__((noinline)) int s6502_aot_validate(uint32_t block_id);
 #ifdef GAM4980_AOT_DIAGNOSTICS
-static void s6502_aot_hit(uint32_t block_id, uint32_t instructions);
-#define S6502_AOT_HIT(id, instructions) s6502_aot_hit(id, instructions)
+static __attribute__((noinline)) void s6502_aot_hit(
+    uint32_t block_id, uint32_t instructions
+);
+#define S6502_AOT_HIT(id, instructions) do {                               \
+    if (s6502_performance_debug)                                            \
+        s6502_aot_hit((id), (instructions));                                \
+} while (0)
 #else
 #define S6502_AOT_HIT(id, instructions) ((void)0)
 #endif
@@ -258,6 +275,25 @@ static uint64_t s6502_aot_instruction_hits;
 static uint16_t s6502_aot_bank2[S6502_AOT_BLOCK_COUNT];
 static uint8_t s6502_aot_bank2_varies[S6502_AOT_BLOCK_COUNT];
 #endif
+#endif
+
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+#define GAM4980_PERFORMANCE_SAMPLE_CAPACITY 512u
+#define GAM4980_PERFORMANCE_SAMPLE_MAX_RECORDS 256u
+typedef struct T_GAM4980_PerformanceSample {
+    uint32_t physical_pc;
+    uint32_t hits;
+    uint16_t virtual_pc;
+    uint16_t reserved;
+} T_GAM4980_PerformanceSample;
+
+static T_GAM4980_PerformanceSample
+    performance_samples[GAM4980_PERFORMANCE_SAMPLE_CAPACITY]
+    GAM4980_CACHE_STORAGE;
+static uint64_t performance_guest_cycles;
+static uint32_t performance_exec_calls;
+static uint32_t performance_sample_count;
+static uint32_t performance_sample_dropped;
 #endif
 
 #define ROM_BANK_SIZE 0x1000u
@@ -443,7 +479,97 @@ static inline uint32_t PA(uint16_t addr)
     return (sys.bk_tab[bank] << 12) | (addr & 0x0fff);
 }
 
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+static void performance_sample_pc(void)
+{
+    uint16_t virtual_pc = sys.cpu.pc;
+    uint32_t physical_pc = PA(virtual_pc);
+    uint32_t slot = (physical_pc ^ (physical_pc >> 8) ^ virtual_pc) &
+        (GAM4980_PERFORMANCE_SAMPLE_CAPACITY - 1u);
+    uint32_t probes;
+
+    for (probes = 0; probes < GAM4980_PERFORMANCE_SAMPLE_CAPACITY; ++probes) {
+        T_GAM4980_PerformanceSample *sample = &performance_samples[slot];
+
+        if (!sample->hits) {
+            if (performance_sample_count >=
+                GAM4980_PERFORMANCE_SAMPLE_MAX_RECORDS) {
+                ++performance_sample_dropped;
+                return;
+            }
+            sample->physical_pc = physical_pc;
+            sample->virtual_pc = virtual_pc;
+            sample->hits = 1u;
+            ++performance_sample_count;
+            return;
+        }
+        if (sample->physical_pc == physical_pc &&
+            sample->virtual_pc == virtual_pc) {
+            ++sample->hits;
+            return;
+        }
+        slot = (slot + 1u) & (GAM4980_PERFORMANCE_SAMPLE_CAPACITY - 1u);
+    }
+    ++performance_sample_dropped;
+}
+
+u32 gam4980_performance_exec_calls(void)
+{
+    return performance_exec_calls;
+}
+
+u64 gam4980_performance_guest_cycles(void)
+{
+    return performance_guest_cycles;
+}
+
+u32 gam4980_performance_sample_count(void)
+{
+    return performance_sample_count;
+}
+
+u32 gam4980_performance_sample_capacity(void)
+{
+    return GAM4980_PERFORMANCE_SAMPLE_CAPACITY;
+}
+
+u16 gam4980_performance_sample_virtual_pc(u32 sample_id)
+{
+    return sample_id < GAM4980_PERFORMANCE_SAMPLE_CAPACITY
+        ? performance_samples[sample_id].virtual_pc : 0u;
+}
+
+u32 gam4980_performance_sample_physical_pc(u32 sample_id)
+{
+    return sample_id < GAM4980_PERFORMANCE_SAMPLE_CAPACITY
+        ? performance_samples[sample_id].physical_pc : 0u;
+}
+
+u32 gam4980_performance_sample_hits(u32 sample_id)
+{
+    return sample_id < GAM4980_PERFORMANCE_SAMPLE_CAPACITY
+        ? performance_samples[sample_id].hits : 0u;
+}
+
+u32 gam4980_performance_sample_dropped(void)
+{
+    return performance_sample_dropped;
+}
+#endif
+
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+#ifdef GAM4980_AOT_DIAGNOSTICS
+static __attribute__((noinline)) void s6502_game_aot_hit(
+    uint32_t entry_id, uint32_t instructions
+)
+{
+    if (entry_id >= s6502_game_aot_entry_count)
+        return;
+    ++s6502_game_aot_entry_hits[entry_id];
+    s6502_game_aot_instruction_hits += instructions;
+}
+#endif
+
 static uint16_t s6502_game_aot_hash_slot(uint32_t physical_pc)
 {
     return (uint16_t)(
@@ -522,6 +648,9 @@ static void s6502_game_aot_prepare(const uint8_t *game, uint32_t size)
     );
 #ifdef GAM4980_AOT_DIAGNOSTICS
     s6502_game_aot_instruction_hits = 0;
+    gam4980_memset(
+        s6502_game_aot_entry_hits, 0, sizeof(s6502_game_aot_entry_hits)
+    );
 #endif
     if (!game || size < 4u)
         return;
@@ -623,6 +752,19 @@ static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id)
     return s6502_aot_validate(block_id);
 }
 
+#if defined(GAM4980_AOT_DIAGNOSTICS) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+void gam4980_set_performance_debug(int enabled)
+{
+    s6502_performance_debug = enabled != 0;
+}
+
+int gam4980_performance_debug_enabled(void)
+{
+    return s6502_performance_debug;
+}
+#endif
+
 #ifdef GAM4980_AOT_DIAGNOSTICS
 static void s6502_aot_hit(uint32_t block_id, uint32_t instructions)
 {
@@ -669,6 +811,16 @@ u64 gam4980_game_aot_instruction_count(void)
     return s6502_game_aot_instruction_hits;
 }
 
+u64 gam4980_game_aot_entry_hit_count(u32 entry_id)
+{
+    return entry_id < s6502_game_aot_entry_count
+        ? s6502_game_aot_entry_hits[entry_id] : 0u;
+}
+#endif
+#endif
+#endif
+
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
 u32 gam4980_game_aot_entry_count(void)
 {
     return s6502_game_aot_entry_count;
@@ -678,8 +830,18 @@ int gam4980_game_aot_enabled(void)
 {
     return s6502_game_aot_enabled;
 }
-#endif
-#endif
+
+u32 gam4980_game_aot_entry_physical_pc(u32 entry_id)
+{
+    return entry_id < s6502_game_aot_entry_count
+        ? s6502_game_aot_entries[entry_id].physical_pc : 0u;
+}
+
+u32 gam4980_game_aot_entry_pattern(u32 entry_id)
+{
+    return entry_id < s6502_game_aot_entry_count
+        ? s6502_game_aot_entries[entry_id].pattern : 0xffffffffu;
+}
 #endif
 
 #ifdef GAM4980_ENABLE_PROFILING
@@ -1228,6 +1390,13 @@ int gam4980_init(const gam4980_buffers_t *buffers)
         return -1;
 
     gam4980_memset(&sys, 0, sizeof(sys));
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+    gam4980_memset(performance_samples, 0, sizeof(performance_samples));
+    performance_guest_cycles = 0;
+    performance_exec_calls = 0;
+    performance_sample_count = 0;
+    performance_sample_dropped = 0;
+#endif
 #ifdef GAM4980_ENABLE_AOT
     gam4980_memset(
         s6502_aot_validation, 0, sizeof(s6502_aot_validation)
@@ -1246,6 +1415,11 @@ int gam4980_init(const gam4980_buffers_t *buffers)
     s6502_game_aot_enabled = 0;
     s6502_game_aot_physical_end = 0;
     s6502_game_aot_storage_end = 0;
+#ifdef GAM4980_AOT_DIAGNOSTICS
+    gam4980_memset(
+        s6502_game_aot_entry_hits, 0, sizeof(s6502_game_aot_entry_hits)
+    );
+#endif
 #endif
 #endif
     sys.ram = buffers->ram;
@@ -1312,6 +1486,17 @@ u8 *gam4980_game_storage(void)
 {
     return sys.flash ? sys.flash + 0x15000 : 0;
 }
+
+#ifdef GAM4980_ENABLE_GAME_LOAD_AOT
+void gam4980_set_game_load_aot_enabled(int enabled)
+{
+    s6502_game_aot_requested = enabled != 0;
+    if (!s6502_game_aot_requested) {
+        s6502_game_aot_enabled = 0;
+        s6502_game_aot_bank_mask = 0;
+    }
+}
+#endif
 
 int gam4980_load_game_header(const u8 *gam, u32 size)
 {
@@ -1384,7 +1569,10 @@ int gam4980_load_game_header(const u8 *gam, u32 size)
     for (int i = 0x05; i <= 0x0c; i += 1)
         mem_bs(i);
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
-    s6502_game_aot_prepare(sys.flash + 0x15000u, size);
+    if (s6502_game_aot_requested)
+        s6502_game_aot_prepare(sys.flash + 0x15000u, size);
+    else
+        s6502_game_aot_prepare(0, 0);
 #endif
     mem_write(0x2029, 0x0d);
     mem_write(0x202a, 0x02);
@@ -1554,8 +1742,18 @@ static void sys_step()
             sys_timer(ticks);
         } else {
             uint32_t p = step_ticked / tstep;
+            uint32_t executed;
+
             sys_isr();
-            step_ticked += s6502_exec(&sys.cpu, exec_slice);
+            executed = s6502_exec(&sys.cpu, exec_slice);
+            step_ticked += executed;
+#ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
+            if (s6502_performance_debug) {
+                ++performance_exec_calls;
+                performance_guest_cycles += executed;
+                performance_sample_pc();
+            }
+#endif
             uint32_t q = step_ticked / tstep;
             sys_timer(q - p);
         }

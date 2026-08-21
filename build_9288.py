@@ -140,7 +140,12 @@ def compile_app(
     if game_load_aot:
         if not enable_aot:
             raise SystemExit("--game-load-aot requires the normal AOT dispatcher")
-        common_flags.append("-DGAM4980_ENABLE_GAME_LOAD_AOT")
+        common_flags.extend(
+            [
+                "-DGAM4980_ENABLE_GAME_LOAD_AOT",
+                "-DGAM4980_RUNTIME_PERFORMANCE_LOG",
+            ]
+        )
     if load_diagnostics:
         common_flags.append("-DGAM4980_LOAD_DIAGNOSTICS")
     if memory_diagnostics:
@@ -323,7 +328,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--game-load-aot",
         action="store_true",
-        help="experimentally bind common game-code superblocks while loading .gam",
+        help=(
+            "add runtime settings, performance logging, and experimental "
+            "game-code AOT templates"
+        ),
     )
     parser.add_argument(
         "--load-diagnostics",
