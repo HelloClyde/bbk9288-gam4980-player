@@ -2349,6 +2349,9 @@ uint32_t s6502_exec(s6502_t *u, uint32_t cycles) {
 #include "s6502_aot_ebin_generated.h"
 #undef S6502_AOT_EMIT_BLOCKS
 #endif
+#ifdef S6502_HLE_EMIT_BLOCKS
+#include "s6502_hle_ebin.h"
+#endif
 #ifdef S6502_GAME_AOT_EMIT_BLOCKS
 #include "s6502_game_load_aot.h"
 #endif

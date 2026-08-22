@@ -55,12 +55,13 @@ jobs:
             -o /tmp/gam4980-core-smoke
           gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
             -Wno-unused-parameter -DDL_DOWN -D_RLS_ \
-            -DGAM4980_ENABLE_AOT -Isrc \
+            -DGAM4980_ENABLE_AOT -DGAM4980_ENABLE_FIRMWARE_HLE -Isrc \
             tests/core_smoke.c src/gam4980_core.c \
             -o /tmp/gam4980-core-aot-smoke
           gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
             -Wno-unused-parameter -DDL_DOWN -D_RLS_ \
-            -DGAM4980_ENABLE_AOT -DGAM4980_ENABLE_GAME_LOAD_AOT \
+            -DGAM4980_ENABLE_AOT -DGAM4980_ENABLE_FIRMWARE_HLE \
+            -DGAM4980_ENABLE_GAME_LOAD_AOT \
             -DGAM4980_RUNTIME_PERFORMANCE_LOG -Isrc \
             tests/core_smoke.c src/gam4980_core.c \
             -o /tmp/gam4980-core-game-load-aot-smoke

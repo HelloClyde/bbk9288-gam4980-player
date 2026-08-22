@@ -100,6 +100,7 @@ def compile_app(
     load_diagnostics: bool,
     memory_diagnostics: bool,
     optimization: str,
+    firmware_hle_mask: int,
 ) -> bytes:
     clang = find_tool(toolchain, "clang")
     objcopy = find_tool(toolchain, "llvm-objcopy")
@@ -136,7 +137,13 @@ def compile_app(
     if switch_dispatch:
         common_flags.append("-DS6502_NO_COMPUTED_GOTO")
     if enable_aot:
-        common_flags.append("-DGAM4980_ENABLE_AOT")
+        common_flags.extend(
+            [
+                "-DGAM4980_ENABLE_AOT",
+                "-DGAM4980_ENABLE_FIRMWARE_HLE",
+                f"-DGAM4980_FIRMWARE_HLE_MASK={firmware_hle_mask}",
+            ]
+        )
     if game_load_aot:
         if not enable_aot:
             raise SystemExit("--game-load-aot requires the normal AOT dispatcher")
@@ -360,6 +367,13 @@ def parse_args() -> argparse.Namespace:
             "(default: 2, preferred for the physical S1C33 CPU)"
         ),
     )
+    parser.add_argument(
+        "--firmware-hle-mask",
+        type=lambda value: int(value, 0),
+        choices=range(32),
+        default=31,
+        help=argparse.SUPPRESS,
+    )
     return parser.parse_args()
 
 
@@ -383,6 +397,7 @@ def main() -> None:
             load_diagnostics=args.load_diagnostics,
             memory_diagnostics=args.memory_diagnostics,
             optimization=args.optimization,
+            firmware_hle_mask=args.firmware_hle_mask,
         )
     app = pack_kf2(payload)
     output.write_bytes(app)

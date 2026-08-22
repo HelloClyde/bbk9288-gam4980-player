@@ -14,6 +14,20 @@
 #define INVALID_RECORD ((size_t)-1)
 #define MAX_KEY_EVENTS 64u
 
+static u8 *stream_roms[2];
+
+static int stream_rom_read(
+    void *context, u8 region, u32 offset, u8 *out, u32 size
+)
+{
+    (void)context;
+    if (region > GAM4980_ROM_REGION_E || !out ||
+        offset > GAM4980_ROM_SIZE || size > GAM4980_ROM_SIZE - offset)
+        return 0;
+    memcpy(out, stream_roms[region] + offset, size);
+    return 1;
+}
+
 typedef struct block_record {
     uint64_t key;
     uint64_t entries;
@@ -410,7 +424,8 @@ static void usage(const char *program)
     fprintf(
         stderr,
         "usage: %s [--frames N] [--start-frame N] [--top N] "
-        "[--output FILE] [--frame-output FILE] "
+        "[--output FILE] [--frame-output FILE] [--stream-rom] "
+        "[--firmware-hle] "
         "[--key FRAME:KEY]... 8.BIN E.BIN game.gam\n",
         program
     );
@@ -429,6 +444,8 @@ int main(int argc, char **argv)
     const char *frame_output = 0;
     const char *paths[3];
     int path_count = 0;
+    int stream_rom = 0;
+    int firmware_hle = 0;
     int index;
     int result = 1;
 
@@ -464,6 +481,10 @@ int main(int argc, char **argv)
                 return 2;
             }
             ++key_event_count;
+        } else if (strcmp(argument, "--stream-rom") == 0) {
+            stream_rom = 1;
+        } else if (strcmp(argument, "--firmware-hle") == 0) {
+            firmware_hle = 1;
         } else if (argument[0] == '-' || path_count == 3) {
             usage(argv[0]);
             return 2;
@@ -490,8 +511,23 @@ int main(int argc, char **argv)
         fprintf(stderr, "could not load exact 2 MiB ROM files\n");
         goto cleanup;
     }
+    if (stream_rom) {
+        stream_roms[GAM4980_ROM_REGION_8] = buffers.rom_8;
+        stream_roms[GAM4980_ROM_REGION_E] = buffers.rom_e;
+        buffers.rom_8 = 0;
+        buffers.rom_e = 0;
+        buffers.rom_read = stream_rom_read;
+    }
 #if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
     gam4980_set_performance_debug(1);
+#endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    gam4980_set_firmware_hle_enabled(firmware_hle);
+#else
+    if (firmware_hle) {
+        fprintf(stderr, "firmware HLE was not compiled into this profiler\n");
+        goto cleanup;
+    }
 #endif
     if (gam4980_init(&buffers) <= 0) {
         fprintf(stderr, "could not initialize the core\n");
@@ -558,6 +594,13 @@ int main(int argc, char **argv)
         }
     }
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    printf(
+        "Firmware HLE hits: %lu\nFirmware HLE guest cycles: %llu\n",
+        (unsigned long)gam4980_firmware_hle_hits(),
+        (unsigned long long)gam4980_firmware_hle_guest_cycles()
+    );
+#endif
 #ifdef GAM4980_STATE_DIAGNOSTICS
     printf(
         "state hash: %016llx\n",
@@ -573,7 +616,7 @@ cleanup:
     free(profiler.records);
     free(buffers.ram);
     free(buffers.flash);
-    free(buffers.rom_8);
-    free(buffers.rom_e);
+    free(stream_rom ? stream_roms[GAM4980_ROM_REGION_8] : buffers.rom_8);
+    free(stream_rom ? stream_roms[GAM4980_ROM_REGION_E] : buffers.rom_e);
     return result;
 }

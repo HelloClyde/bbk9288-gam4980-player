@@ -36,7 +36,7 @@ typedef char T_9288_PublicSysBltFrameOffsetMustBe59c[
 #define SELECTOR_FIRST_ROW_Y 20
 #define SELECTOR_VISIBLE_ROWS 11
 #define SELECTOR_ACCEPT_DELAY_TICKS 100u
-#define SETTINGS_ROW_COUNT 3
+#define SETTINGS_ROW_COUNT 5
 
 static const char k_rom_8_path[] = "a:\\gam4980\\8.BIN";
 static const char k_rom_e_path[] = "a:\\gam4980\\E.BIN";
@@ -72,6 +72,14 @@ static const T_BYTE k_setting_aot_off[] = {
     0xbc, 0xd3, 0xd4, 0xd8, 0xca, 0xb1, ' ', 'A', 'O', 'T',
     0xa3, 0xba, 0xb9, 0xd8, 0
 }; /* 加载时 AOT：关 (GBK) */
+static const T_BYTE k_setting_hle_on[] = {
+    0xb9, 0xcc, 0xbc, 0xfe, ' ', 'H', 'L', 'E',
+    0xa3, 0xba, 0xbf, 0xaa, 0
+}; /* 固件 HLE：开 (GBK) */
+static const T_BYTE k_setting_hle_off[] = {
+    0xb9, 0xcc, 0xbc, 0xfe, ' ', 'H', 'L', 'E',
+    0xa3, 0xba, 0xb9, 0xd8, 0
+}; /* 固件 HLE：关 (GBK) */
 static const T_BYTE k_setting_debug_on[] = {
     0xd0, 0xd4, 0xc4, 0xdc, 0xb5, 0xf7, 0xca, 0xd4,
     0xa3, 0xba, 0xbf, 0xaa, 0
@@ -80,6 +88,14 @@ static const T_BYTE k_setting_debug_off[] = {
     0xd0, 0xd4, 0xc4, 0xdc, 0xb5, 0xf7, 0xca, 0xd4,
     0xa3, 0xba, 0xb9, 0xd8, 0
 }; /* 性能调试：关 (GBK) */
+static const T_BYTE k_setting_speed_2x[] = {
+    0xd4, 0xcb, 0xd0, 0xd0, 0xcb, 0xd9, 0xb6, 0xc8,
+    0xa3, 0xba, '2', 0xb1, 0xb6, 0
+}; /* 运行速度：2倍 (GBK) */
+static const T_BYTE k_setting_speed_normal[] = {
+    0xd4, 0xcb, 0xd0, 0xd0, 0xcb, 0xd9, 0xb6, 0xc8,
+    0xa3, 0xba, 0xd5, 0xfd, 0xb3, 0xa3, 0
+}; /* 运行速度：正常 (GBK) */
 static const T_BYTE k_setting_return[] = {
     0xb7, 0xb5, 0xbb, 0xd8, 0xd3, 0xce, 0xcf, 0xb7,
     0xc1, 0xd0, 0xb1, 0xed, 0
@@ -109,7 +125,9 @@ static int g_setting_load_aot = 1;
 #else
 static int g_setting_load_aot;
 #endif
+static int g_setting_firmware_hle;
 static int g_setting_performance_debug;
+static int g_setting_double_speed;
 static u8 g_static_ram[GAM4980_RAM_SIZE]
     __attribute__((aligned(4), section(".scratch")));
 static FS_FILE *g_rom_files[2];
@@ -188,6 +206,7 @@ static int read_rom_bank(
 );
 static void destroy_selector_window(void);
 static void destroy_emulator_window(void);
+static void finish_emulator_window(T_GUI_HWND window);
 
 void *memcpy(void *destination, const void *source, unsigned int size)
 {
@@ -265,7 +284,6 @@ static void write_load_diagnostic(u8 stage, u32 value_a, u32 value_b)
     (void)fs_fwrite(line, 1, (size_t)(out - line), file);
     (void)fs_update(file);
     fs_fclose(file);
-    (void)fs_flush_cache();
 }
 #else
 #define write_load_diagnostic(stage, value_a, value_b) ((void)0)
@@ -352,6 +370,8 @@ static void load_settings(void)
     FS_FILE *file = fs_fopen(k_config_path, FS_O_RDONLY);
 
     g_setting_performance_debug = 0;
+    g_setting_firmware_hle = 0;
+    g_setting_double_speed = 0;
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
     g_setting_load_aot = 1;
 #else
@@ -375,6 +395,10 @@ static void load_settings(void)
     g_setting_load_aot = (data[5] & 0x01u) != 0u;
 #endif
     g_setting_performance_debug = (data[5] & 0x02u) != 0u;
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    g_setting_firmware_hle = (data[5] & 0x04u) != 0u;
+#endif
+    g_setting_double_speed = (data[5] & 0x08u) != 0u;
 }
 
 static void save_settings(void)
@@ -388,6 +412,10 @@ static void save_settings(void)
         data[5] |= 0x01u;
     if (g_setting_performance_debug)
         data[5] |= 0x02u;
+    if (g_setting_firmware_hle)
+        data[5] |= 0x04u;
+    if (g_setting_double_speed)
+        data[5] |= 0x08u;
     data[6] = settings_checksum(data, 6u);
     data[7] = (u8)~data[6];
     file = fs_fopen(k_config_path, FS_O_WRONLY);
@@ -398,7 +426,6 @@ static void save_settings(void)
         g_settings_dirty = 0;
     }
     fs_fclose(file);
-    (void)fs_flush_cache();
 }
 
 static void reset_performance_metrics(void)
@@ -642,7 +669,6 @@ static void write_save(void)
         gam4980_save_mark_clean();
     }
     fs_fclose(file);
-    (void)fs_flush_cache();
 }
 
 static void performance_log_text(FS_FILE *file, const char *text)
@@ -699,7 +725,8 @@ static void performance_log_u32(
 }
 
 #if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
 static char *append_u64_hex(char *out, u64 value)
 {
     union {
@@ -852,6 +879,10 @@ static void write_performance_log(void)
     performance_log_text(file, name);
     performance_log_text(file, "\r\n");
     performance_log_u32(file, "load_aot", g_setting_load_aot != 0);
+    performance_log_u32(
+        file, "firmware_hle", g_setting_firmware_hle != 0
+    );
+    performance_log_u32(file, "speed_2x", g_setting_double_speed != 0);
     performance_log_u32(file, "debug", 1u);
     performance_log_u32(file, "game_size", g_performance.game_size);
     performance_log_u32(file, "flash_size", g_performance.flash_size);
@@ -892,6 +923,15 @@ static void write_performance_log(void)
         file, "game_aot_enabled_end", gam4980_game_aot_enabled() != 0
     );
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    performance_log_u32(
+        file, "firmware_hle_hits", gam4980_firmware_hle_hits()
+    );
+    performance_log_u64_hex(
+        file, "firmware_hle_guest_cycles",
+        gam4980_firmware_hle_guest_cycles()
+    );
+#endif
 #if defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)
     performance_log_aot_blocks(file);
 #endif
@@ -901,7 +941,6 @@ static void write_performance_log(void)
     performance_log_text(file, "[END]\r\n");
     (void)fs_update(file);
     fs_fclose(file);
-    (void)fs_flush_cache();
 }
 
 static void keep_selector_visible(void)
@@ -950,7 +989,15 @@ static void selector_toggle_setting(T_GUI_HWND window)
         g_settings_dirty = 1;
 #endif
     } else if (g_settings_index == 1) {
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+        g_setting_firmware_hle = !g_setting_firmware_hle;
+        g_settings_dirty = 1;
+#endif
+    } else if (g_settings_index == 2) {
         g_setting_performance_debug = !g_setting_performance_debug;
+        g_settings_dirty = 1;
+    } else if (g_settings_index == 3) {
+        g_setting_double_speed = !g_setting_double_speed;
         g_settings_dirty = 1;
     }
     (void)fnGUI_InvalidateRect(window, 0, TRUE);
@@ -997,9 +1044,13 @@ static void selector_draw_settings(T_GUI_HDC hdc)
     int row;
 
     rows[0] = g_setting_load_aot ? k_setting_aot_on : k_setting_aot_off;
-    rows[1] = g_setting_performance_debug
+    rows[1] = g_setting_firmware_hle
+        ? k_setting_hle_on : k_setting_hle_off;
+    rows[2] = g_setting_performance_debug
         ? k_setting_debug_on : k_setting_debug_off;
-    rows[2] = k_setting_return;
+    rows[3] = g_setting_double_speed
+        ? k_setting_speed_2x : k_setting_speed_normal;
+    rows[4] = k_setting_return;
     (void)fnGUI_TextOut(hdc, 4, 2, k_settings_title);
     for (row = 0; row < SETTINGS_ROW_COUNT; ++row) {
         selector_draw_row(
@@ -1409,9 +1460,11 @@ static void run_timer_frame(void)
     u32 frame_count;
 
     /* On 9288, GUI timer speed 20 delivers about 20 MSG_TIMER events per
-     * second.  Advance three 60 Hz guest frames per event; the phase form is
-     * retained so the relation stays explicit if either rate changes. */
-    g_timer_frame_phase += FRAME_RATE_HZ;
+     * second.  Normal mode advances three 60 Hz guest frames per event.  The
+     * optional 2x setting advances guest time twice as fast without changing
+     * the firmware-compatible timer or screen submission path. */
+    g_timer_frame_phase += FRAME_RATE_HZ *
+        (g_setting_double_speed ? 2u : 1u);
     frames_this_tick = g_timer_frame_phase / GUI_TIMER_HZ;
     g_timer_frame_phase %= GUI_TIMER_HZ;
     frame_count = frames_this_tick;
@@ -1493,6 +1546,17 @@ static T_WORD gam_window_proc(
         return fnGUI_DefaultMainWinProc(window, message, wparam, lparam);
     case MSG_CLOSE:
         g_close_requested = 1;
+        (void)fnGUI_KillTimer(window, FRAME_TIMER_ID);
+        if (g_game_hdc) {
+            fnGUI_ReleaseDC(g_game_hdc);
+            g_game_hdc = 0;
+        }
+        if (g_main_window == window)
+            g_main_window = 0;
+        /* Follow the 9288 SDK sample: destroy and post Quit from MSG_CLOSE.
+         * Cleanup runs only after the outer message loop consumes Quit. */
+        fnGUI_DestroyMainWindow(window);
+        fnGUI_PostQuitMessage(window);
         return 0;
     default:
         return fnGUI_DefaultMainWinProc(window, message, wparam, lparam);
@@ -1554,17 +1618,32 @@ static void destroy_selector_window(void)
 
 static void destroy_emulator_window(void)
 {
-    T_GUI_HWND window = g_main_window;
+    finish_emulator_window(g_main_window);
+}
+
+static void finish_emulator_window(T_GUI_HWND window)
+{
+    T_GUI_Msg message;
 
     if (!window)
         return;
-    if (g_game_hdc) {
-        fnGUI_ReleaseDC(g_game_hdc);
-        g_game_hdc = 0;
+
+    if (g_main_window == window)
+        (void)fnGUI_PostMessage(window, MSG_CLOSE, 0, 0);
+
+    /* Match the 9288 SDK's downsample.c exactly here: the closing loop is
+     * filtered to this window.  A global GetMessage(0) can consume messages
+     * belonging to the desktop/loader while the application is unwinding. */
+    while (fnGUI_GetMessage(&message, window)) {
+        fnGUI_TranslateMessage(&message);
+        fnGUI_DispatchMessage(&message);
     }
-    g_main_window = 0;
-    fnGUI_DestroyMainWindow(window);
-    fnGUI_PostQuitMessage(window);
+
+    /* A failed post must not leave the window and its client DC alive. */
+    if (g_main_window == window) {
+        (void)gam_window_proc(window, MSG_CLOSE, 0, 0);
+    }
+
     fnGUI_ThrowAwayMessages(window);
     fnGUI_MainWindowCleanup(window);
 }
@@ -1572,9 +1651,11 @@ static void destroy_emulator_window(void)
 static int run_emulator_window(void)
 {
     T_GUI_Msg message;
+    T_GUI_HWND window;
 
     if (!g_main_window)
         return 0;
+    window = g_main_window;
     write_load_diagnostic(0x0bu, 0u, 0u);
     init_screen_expansion();
     clear_screen();
@@ -1617,8 +1698,7 @@ static int run_emulator_window(void)
             g_performance.session_begin_tick,
             (u32)fnGUI_GetTickCount()
         );
-    (void)fnGUI_KillTimer(g_main_window, FRAME_TIMER_ID);
-    destroy_emulator_window();
+    finish_emulator_window(window);
     return 1;
 }
 
@@ -1689,8 +1769,12 @@ T_WORD App_Main(void)
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
     gam4980_set_game_load_aot_enabled(g_setting_load_aot);
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    gam4980_set_firmware_hle_enabled(g_setting_firmware_hle);
+#endif
 #if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
     gam4980_set_performance_debug(g_setting_performance_debug);
 #endif
     operation_tick = (u32)fnGUI_GetTickCount();

@@ -175,18 +175,22 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
         if (s6502_aot_match(1u)) goto _aot_01;                \
         break;                                                         \
     case 0x608au:                                      \
+        S6502_AOT_ENTRY_608A_HOOK();                              \
         if (s6502_aot_match(2u)) goto _aot_02;                \
         break;                                                         \
     case 0x7937u:                                      \
+        S6502_AOT_ENTRY_7937_HOOK();                              \
         if (s6502_aot_match(3u)) goto _aot_03;                \
         break;                                                         \
     case 0x6111u:                                      \
         if (s6502_aot_match(4u)) goto _aot_04;                \
         break;                                                         \
     case 0x650fu:                                      \
+        S6502_AOT_ENTRY_650F_HOOK();                              \
         if (s6502_aot_match(5u)) goto _aot_05;                \
         break;                                                         \
     case 0x6a75u:                                      \
+        S6502_AOT_ENTRY_6A75_HOOK();                              \
         if (s6502_aot_match(6u)) goto _aot_06;                \
         break;                                                         \
     case 0x6655u:                                      \
@@ -292,6 +296,7 @@ static const s6502_aot_block_t s6502_aot_blocks[] = {
         if (s6502_aot_match(40u)) goto _aot_40;                \
         break;                                                         \
     case 0x5cb3u:                                      \
+        S6502_AOT_ENTRY_5CB3_HOOK();                              \
         if (s6502_aot_match(41u)) goto _aot_41;                \
         break;                                                         \
     case 0x5cdau:                                      \

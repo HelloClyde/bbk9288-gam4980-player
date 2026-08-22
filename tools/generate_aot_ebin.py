@@ -846,9 +846,31 @@ def render(
         )
     )
     for index, block in enumerate(blocks):
+        out.append(
+            f"    case 0x{block['virtual_pc']:04x}u:                                      \\"
+        )
+        if block["virtual_pc"] == 0x5CB3:
+            out.append(
+                "        S6502_AOT_ENTRY_5CB3_HOOK();                              \\"
+            )
+        if block["virtual_pc"] == 0x608A:
+            out.append(
+                "        S6502_AOT_ENTRY_608A_HOOK();                              \\"
+            )
+        if block["virtual_pc"] == 0x650F:
+            out.append(
+                "        S6502_AOT_ENTRY_650F_HOOK();                              \\"
+            )
+        if block["virtual_pc"] == 0x6A75:
+            out.append(
+                "        S6502_AOT_ENTRY_6A75_HOOK();                              \\"
+            )
+        if block["virtual_pc"] == 0x7937:
+            out.append(
+                "        S6502_AOT_ENTRY_7937_HOOK();                              \\"
+            )
         out.extend(
             (
-                f"    case 0x{block['virtual_pc']:04x}u:                                      \\",
                 f"        if (s6502_aot_match({index}u)) goto _aot_{index:02d};                \\",
                 "        break;                                                         \\",
             )

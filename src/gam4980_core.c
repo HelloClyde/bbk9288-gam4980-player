@@ -110,7 +110,8 @@ static void mem_write(uint16_t addr, uint8_t val);
 #define GAM4980_CACHE_STORAGE
 #endif
 #if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
 static int s6502_performance_debug;
 #endif
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
@@ -207,6 +208,212 @@ static uint8_t s6502_aot_validation[S6502_AOT_BLOCK_COUNT];
 #include "s6502_aot_ebin_generated.h"
 #undef S6502_AOT_DEFINE_DISPATCH
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+#ifndef GAM4980_ENABLE_AOT
+#error GAM4980_ENABLE_FIRMWARE_HLE requires GAM4980_ENABLE_AOT
+#endif
+#ifndef GAM4980_FIRMWARE_HLE_MASK
+#define GAM4980_FIRMWARE_HLE_MASK 0x1fu
+#endif
+#define S6502_HLE_BITMAP_COPY 0x01u
+#define S6502_HLE_GLYPH_ROW   0x02u
+#define S6502_HLE_SHIFT_BLIT  0x04u
+#define S6502_HLE_BYTE_FILL   0x08u
+#define S6502_HLE_WIDE_GLYPH  0x10u
+static int s6502_firmware_hle_enabled;
+static uint8_t s6502_firmware_hle_validation;
+static uint8_t s6502_firmware_hle_glyph_validation;
+static uint8_t s6502_firmware_hle_bitmap_validation;
+static uint8_t s6502_firmware_hle_fill_validation;
+static uint8_t s6502_firmware_hle_wide_glyph_validation;
+static uint32_t s6502_firmware_hle_hits;
+static uint64_t s6502_firmware_hle_guest_cycles;
+static uint16_t *s6502_firmware_hle_banks;
+typedef struct s6502_hle_glyph_result {
+    uint8_t ac;
+    uint8_t ix;
+    uint8_t iy;
+    uint8_t status;
+} s6502_hle_glyph_result_t;
+#if defined(__clang__) && defined(__s1c33__)
+#define S6502_HLE_GLYPH_ROW_ATTRIBUTE __attribute__((noinline, optnone))
+#else
+#define S6502_HLE_GLYPH_ROW_ATTRIBUTE __attribute__((noinline))
+#endif
+static __attribute__((noinline)) int s6502_firmware_hle_match(void);
+static __attribute__((noinline)) int s6502_firmware_hle_glyph_match(void);
+static __attribute__((noinline)) int s6502_firmware_hle_bitmap_match(void);
+static __attribute__((noinline)) int s6502_firmware_hle_fill_match(void);
+static __attribute__((noinline)) int s6502_firmware_hle_wide_glyph_match(void);
+__attribute__((noinline)) uint32_t
+s6502_firmware_hle_glyph_bits(uint32_t value, uint32_t shift);
+S6502_HLE_GLYPH_ROW_ATTRIBUTE void s6502_firmware_hle_glyph_row(
+    uint32_t ix, uint32_t sp, uint32_t status,
+    s6502_hle_glyph_result_t *result
+);
+S6502_HLE_GLYPH_ROW_ATTRIBUTE void s6502_firmware_hle_wide_glyph_row(
+    uint32_t ix, uint32_t sp, uint32_t status,
+    s6502_hle_glyph_result_t *result
+);
+#if defined(GAM4980_AOT_DIAGNOSTICS) || \
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
+#define S6502_HLE_RECORD(cycles) do {                                      \
+    if (s6502_performance_debug) {                                         \
+        ++s6502_firmware_hle_hits;                                         \
+        s6502_firmware_hle_guest_cycles += (cycles);                       \
+    }                                                                      \
+} while (0)
+#else
+#define S6502_HLE_RECORD(cycles) ((void)0)
+#endif
+#define S6502_HLE_HELPER_6646_CYCLES(row, column) (                         \
+    (row) < 0x40u ? 59u :                                                   \
+    (row) == 0x40u ? 51u :                                                  \
+    (row) == 0x41u ?                                                        \
+        ((column) < 8u ? 53u :                                              \
+            (uint16_t)(76u + 40u * (((column) - 8u) >> 3))) :              \
+        67u                                                                  \
+)
+#define S6502_HLE_DISPATCH_608A() do {                                      \
+    if ((GAM4980_FIRMWARE_HLE_MASK & S6502_HLE_WIDE_GLYPH) &&               \
+        s6502_firmware_hle_enabled && !DECIMAL_p && ix < 32u &&             \
+        s6502_firmware_hle_banks[6] == 0x0eb5u &&                           \
+        (s6502_firmware_hle_glyph_validation == 1u ||                       \
+            s6502_firmware_hle_glyph_match()) &&                            \
+        (s6502_firmware_hle_wide_glyph_validation == 1u ||                  \
+            s6502_firmware_hle_wide_glyph_match()) &&                       \
+        READ8(0x208bu) <= 7u) {                                             \
+        ea = (uint16_t)(                                                   \
+            s6502_stack_ram[0x2fu] | (s6502_stack_ram[0x30u] << 8)         \
+        );                                                                  \
+        et = (uint16_t)(51u + 43u * READ8(0x208bu) +                        \
+            !!(0xff00u & (ea ^ (uint16_t)(ea + ix))) +                     \
+            !!(0xff00u & (ea ^ (uint16_t)(ea + ix + 1u))));                \
+        dt = READ8(0x2081u);                                                \
+        ea = (uint16_t)(                                                   \
+            s6502_stack_ram[0x3au] | (s6502_stack_ram[0x3bu] << 8)         \
+        );                                                                  \
+        if (dt == 0x90u) {                                                  \
+            et = (uint16_t)(et + 67u +                                     \
+                !!(0xff00u & (ea ^ (uint16_t)(ea + 1u))));                 \
+        } else if (dt < 8u) {                                               \
+            et = (uint16_t)(et +                                           \
+                (s6502_page3[0xe5u] != 1u ? 88u :                          \
+                 s6502_stack_ram[0x3bu] != s6502_page3[0xe7u] ? 98u :      \
+                 s6502_stack_ram[0x3au] != s6502_page3[0xe6u] ? 108u :     \
+                 142u) +                                                    \
+                !!(0xff00u & (ea ^ (uint16_t)(ea + 1u))));                 \
+        } else {                                                            \
+            et = (uint16_t)(et +                                           \
+                (s6502_page3[0xe5u] != 1u ? 87u :                          \
+                 s6502_stack_ram[0x3bu] != s6502_page3[0xe7u] ? 97u :      \
+                 s6502_stack_ram[0x3au] != s6502_page3[0xe6u] ? 107u :     \
+                 140u) +                                                    \
+                !!(0xff00u & (ea ^ (uint16_t)(ea + 2u))));                 \
+        }                                                                   \
+        et = (uint16_t)(et + 13u + S6502_HLE_HELPER_6646_CYCLES(          \
+            READ8(0x2082u), dt));                                          \
+        if ((uint32_t)et <= cycles - executed)                              \
+            goto _hle_ebin_wide_glyph_row;                                  \
+    }                                                                       \
+} while (0)
+#define S6502_HLE_DISPATCH_650F() do {                                      \
+    if ((GAM4980_FIRMWARE_HLE_MASK & S6502_HLE_GLYPH_ROW) &&                \
+        s6502_firmware_hle_enabled && !DECIMAL_p && ix < 16u &&             \
+        s6502_firmware_hle_banks[6] == 0x0eb5u &&                           \
+        (s6502_firmware_hle_glyph_validation == 1u ||                       \
+            s6502_firmware_hle_glyph_match()) && READ8(0x208bu) <= 7u) {    \
+        ea = (uint16_t)(                                                   \
+            s6502_stack_ram[0x2fu] | (s6502_stack_ram[0x30u] << 8)         \
+        );                                                                  \
+        et = (uint16_t)(40u + 37u * READ8(0x208bu) +                        \
+            !!(0xff00u & (ea ^ (uint16_t)(ea + ix))));                     \
+        dt = READ8(0x2081u);                                                \
+        ea = (uint16_t)(                                                   \
+            s6502_stack_ram[0x3au] | (s6502_stack_ram[0x3bu] << 8)         \
+        );                                                                  \
+        if (dt == 0x98u) {                                                  \
+            et = (uint16_t)(et + 57u);                                     \
+        } else if (s6502_page3[0xe5u] == 1u &&                             \
+                   ea == (uint16_t)(s6502_page3[0xe6u] |                   \
+                                    (s6502_page3[0xe7u] << 8))) {          \
+            et = (uint16_t)(et + (dt < 8u ? 137u :                         \
+                (uint16_t)(136u + ((uint8_t)ea == 0xffu))));               \
+        } else {                                                            \
+            et = (uint16_t)(et + (dt < 8u ?                               \
+                (uint16_t)(78u +                                           \
+                    (s6502_page3[0xe5u] != 1u ? 9u :                       \
+                     s6502_stack_ram[0x3bu] != s6502_page3[0xe7u] ?        \
+                         19u : 29u)) :                                      \
+                (uint16_t)(76u +                                           \
+                    (s6502_page3[0xe5u] != 1u ? 9u :                       \
+                     s6502_stack_ram[0x3bu] != s6502_page3[0xe7u] ?        \
+                         19u : 29u) +                                       \
+                    ((uint8_t)ea == 0xffu))));                              \
+        }                                                                   \
+        et = (uint16_t)(et + S6502_HLE_HELPER_6646_CYCLES(                 \
+            READ8(0x2082u), dt));                                          \
+        if ((uint32_t)et <= cycles - executed)                              \
+            goto _hle_ebin_glyph_row;                                       \
+    }                                                                       \
+} while (0)
+#define S6502_HLE_DISPATCH_6A75() do {                                      \
+    if ((GAM4980_FIRMWARE_HLE_MASK & S6502_HLE_SHIFT_BLIT) &&               \
+        s6502_firmware_hle_enabled && !DECIMAL_p &&                         \
+        s6502_firmware_hle_banks[6] == 0x0eb5u &&                           \
+        (s6502_firmware_hle_validation == 1u ||                             \
+            s6502_firmware_hle_match()) && READ8(0x20cfu) <= 7u) {          \
+        ea = (uint16_t)(                                                   \
+            s6502_stack_ram[0x3au] | (s6502_stack_ram[0x3bu] << 8)         \
+        );                                                                  \
+        dt = (uint8_t)(READ8(0x20d8u) - 1u);                               \
+        et = (uint16_t)((READ8(0x20cfu) == 0u ? 55u :                     \
+            (uint16_t)(53u + 19u * READ8(0x20cfu))) +                     \
+            (ea == 0x0400u ? 75u : ((ea >> 8) != 0x04u ? 31u : 41u)) +    \
+            (dt ? 39u : 37u));                                             \
+        if ((uint32_t)et <= cycles - executed)                              \
+            goto _hle_ebin_shift_blit;                                      \
+    }                                                                       \
+} while (0)
+#define S6502_HLE_DISPATCH_5CB3() do {                                      \
+    if ((GAM4980_FIRMWARE_HLE_MASK & S6502_HLE_BITMAP_COPY) &&              \
+        s6502_firmware_hle_enabled && !DECIMAL_p &&                         \
+        s6502_firmware_hle_banks[5] == 0x0eb8u &&                           \
+        (s6502_firmware_hle_bitmap_validation == 1u ||                      \
+            s6502_firmware_hle_bitmap_match()) && READ8(0x20cfu) <= 7u) {  \
+        dt = (uint8_t)(READ8(0x20d8u) - 1u);                               \
+        et = (uint16_t)((READ8(0x20cfu) == 0u ? 55u :                      \
+            (uint16_t)(53u + 19u * READ8(0x20cfu))) +                      \
+            (dt ? 48u : 46u));                                             \
+        if ((uint32_t)et <= cycles - executed)                              \
+            goto _hle_ebin_bitmap_copy;                                     \
+    }                                                                       \
+} while (0)
+#define S6502_HLE_DISPATCH_7937() do {                                      \
+    if ((GAM4980_FIRMWARE_HLE_MASK & S6502_HLE_BYTE_FILL) &&                \
+        s6502_firmware_hle_enabled && !DECIMAL_p && ix != 0u &&             \
+        s6502_firmware_hle_banks[7] == 0x0ebeu &&                           \
+        (s6502_firmware_hle_fill_validation == 1u ||                        \
+            s6502_firmware_hle_fill_match())) {                            \
+        et = (uint16_t)(20u * (uint16_t)ix + 1u);                          \
+        if ((uint32_t)et <= cycles - executed)                              \
+            goto _hle_ebin_byte_fill;                                       \
+    }                                                                       \
+} while (0)
+#define S6502_HLE_EMIT_BLOCKS
+#define S6502_AOT_ENTRY_5CB3_HOOK() S6502_HLE_DISPATCH_5CB3()
+#define S6502_AOT_ENTRY_608A_HOOK() S6502_HLE_DISPATCH_608A()
+#define S6502_AOT_ENTRY_650F_HOOK() S6502_HLE_DISPATCH_650F()
+#define S6502_AOT_ENTRY_6A75_HOOK() S6502_HLE_DISPATCH_6A75()
+#define S6502_AOT_ENTRY_7937_HOOK() S6502_HLE_DISPATCH_7937()
+#elif defined(GAM4980_ENABLE_AOT)
+#define S6502_AOT_ENTRY_5CB3_HOOK() ((void)0)
+#define S6502_AOT_ENTRY_608A_HOOK() ((void)0)
+#define S6502_AOT_ENTRY_650F_HOOK() ((void)0)
+#define S6502_AOT_ENTRY_6A75_HOOK() ((void)0)
+#define S6502_AOT_ENTRY_7937_HOOK() ((void)0)
+#endif
 #ifdef GAM4980_ENABLE_PROFILING
 static void profile_instruction(uint16_t virtual_pc, uint8_t opcode);
 #define S6502_INSTRUCTION_HOOK(pc, opcode) profile_instruction(pc, opcode)
@@ -239,11 +446,30 @@ static uint8_t *s6502_page3;
 #include "s6502_aot_ebin_generated.h"
 #undef S6502_AOT_UNDEFINE
 #undef S6502_AOT_HIT
+#undef S6502_AOT_ENTRY_5CB3_HOOK
+#undef S6502_AOT_ENTRY_608A_HOOK
+#undef S6502_AOT_ENTRY_650F_HOOK
+#undef S6502_AOT_ENTRY_6A75_HOOK
+#undef S6502_AOT_ENTRY_7937_HOOK
+#endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+#undef S6502_HLE_EMIT_BLOCKS
+#undef S6502_HLE_DISPATCH_5CB3
+#undef S6502_HLE_DISPATCH_608A
+#undef S6502_HLE_DISPATCH_650F
+#undef S6502_HLE_DISPATCH_6A75
+#undef S6502_HLE_DISPATCH_7937
+#undef S6502_HLE_HELPER_6646_CYCLES
+#undef S6502_HLE_RECORD
+#undef S6502_HLE_BITMAP_COPY
+#undef S6502_HLE_GLYPH_ROW
+#undef S6502_HLE_SHIFT_BLIT
+#undef S6502_HLE_BYTE_FILL
+#undef S6502_HLE_WIDE_GLYPH
 #endif
 #ifdef GAM4980_ENABLE_PROFILING
 #undef S6502_INSTRUCTION_HOOK
 #endif
-
 static struct {
     s6502_t      cpu;
     uint8_t     *mem_r[0x100];
@@ -478,6 +704,645 @@ static inline uint32_t PA(uint16_t addr)
     uint8_t bank = addr >> 12;
     return (sys.bk_tab[bank] << 12) | (addr & 0x0fff);
 }
+
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+static const uint8_t s6502_firmware_hle_blit_signature[] = {
+    0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe5, 0x20, 0x18, 0xad, 0x2f, 0x00, 0x69,
+    0x01, 0x8d, 0x2f, 0x00, 0xad, 0x30, 0x00, 0x69, 0x00, 0x8d, 0x30, 0x00,
+    0xa0, 0x00, 0xb1, 0x2f, 0x8d, 0xe6, 0x20, 0xad, 0xcf, 0x20, 0xaa, 0xe0,
+    0x00, 0xf0, 0x0b, 0x4e, 0xe5, 0x20, 0x6e, 0xe6, 0x20, 0xca, 0xe0, 0x00,
+    0xd0, 0xf5, 0xad, 0xe5, 0x03, 0xc9, 0x01, 0xd0, 0x32, 0xad, 0x3b, 0x00,
+    0xcd, 0xe7, 0x03, 0xd0, 0x2a, 0xad, 0x3a, 0x00, 0xcd, 0xe6, 0x03, 0xd0,
+    0x22, 0xad, 0xe8, 0x03, 0x8d, 0x3a, 0x00, 0xad, 0xe9, 0x03, 0x8d, 0x3b,
+    0x00, 0xa0, 0x00, 0xad, 0xe6, 0x20, 0x91, 0x3a, 0xad, 0xe6, 0x03, 0x8d,
+    0x3a, 0x00, 0xad, 0xe7, 0x03, 0x8d, 0x3b, 0x00, 0x4c, 0xe7, 0x6a, 0xa0,
+    0x00, 0xad, 0xe6, 0x20, 0x91, 0x3a, 0x18, 0xad, 0x3a, 0x00, 0x69, 0x01,
+    0x8d, 0x3a, 0x00, 0xad, 0x3b, 0x00, 0x69, 0x00, 0x8d, 0x3b, 0x00, 0xce,
+    0xd8, 0x20, 0xad, 0xd8, 0x20, 0xc9, 0x00, 0xf0, 0x03, 0x4c, 0x75, 0x6a,
+};
+
+static __attribute__((noinline)) int s6502_firmware_hle_match(void)
+{
+    uint32_t index;
+
+    if (PA(0x6a75u) != 0xeb5a75u)
+        return 0;
+    if (s6502_page3[0xe5u] != 0x01u || s6502_page3[0xe6u] != 0x00u ||
+        s6502_page3[0xe7u] != 0x04u || s6502_page3[0xe8u] != 0x00u ||
+        s6502_page3[0xe9u] != 0x10u)
+        return 0;
+    if (s6502_firmware_hle_validation == 1u)
+        return 1;
+    if (s6502_firmware_hle_validation == 2u)
+        return 0;
+    for (index = 0;
+         index < sizeof(s6502_firmware_hle_blit_signature); ++index) {
+        if (mem_readx((uint16_t)(0x6a75u + index)) !=
+            s6502_firmware_hle_blit_signature[index]) {
+            s6502_firmware_hle_validation = 2u;
+            return 0;
+        }
+    }
+    s6502_firmware_hle_validation = 1u;
+    return 1;
+}
+
+static __attribute__((noinline)) int s6502_firmware_hle_glyph_match(void)
+{
+    uint32_t fnv = 2166136261u;
+    uint32_t sdbm = 0u;
+    uint16_t address;
+
+    if (PA(0x650bu) != 0xeb550bu)
+        return 0;
+    if (s6502_firmware_hle_glyph_validation == 1u)
+        return 1;
+    if (s6502_firmware_hle_glyph_validation == 2u)
+        return 0;
+    for (address = 0x650bu; address < 0x66fdu; ++address) {
+        uint8_t byte = mem_readx(address);
+
+        fnv = (fnv ^ byte) * 16777619u;
+        sdbm = byte + (sdbm << 6) + (sdbm << 16) - sdbm;
+    }
+    if (fnv != 0x2b9d8422u || sdbm != 0x842e5893u) {
+        s6502_firmware_hle_glyph_validation = 2u;
+        return 0;
+    }
+    s6502_firmware_hle_glyph_validation = 1u;
+    return 1;
+}
+
+static __attribute__((noinline)) int s6502_firmware_hle_wide_glyph_match(void)
+{
+    uint32_t fnv = 2166136261u;
+    uint32_t sdbm = 0u;
+    uint16_t address;
+
+    if (PA(0x6086u) != 0xeb5086u)
+        return 0;
+    if (s6502_firmware_hle_wide_glyph_validation == 1u)
+        return 1;
+    if (s6502_firmware_hle_wide_glyph_validation == 2u)
+        return 0;
+    for (address = 0x6086u; address < 0x61c5u; ++address) {
+        uint8_t byte = mem_readx(address);
+
+        fnv = (fnv ^ byte) * 16777619u;
+        sdbm = byte + (sdbm << 6) + (sdbm << 16) - sdbm;
+    }
+    if (fnv != 0x6b27cb48u || sdbm != 0xcba8f879u) {
+        s6502_firmware_hle_wide_glyph_validation = 2u;
+        return 0;
+    }
+    s6502_firmware_hle_wide_glyph_validation = 1u;
+    return 1;
+}
+
+__attribute__((noinline)) uint32_t
+s6502_firmware_hle_glyph_bits(uint32_t value, uint32_t shift)
+{
+    uint8_t high;
+    uint8_t low;
+    uint8_t left_mask;
+    uint8_t right_mask;
+
+    /*
+     * S1C33 keeps narrow C values in full-width registers.  Canonicalize the
+     * input explicitly before a right shift so stale upper bits cannot enter
+     * the low byte.  Keep every shift count constant as well.  A separate
+     * noinline helper keeps these temporaries out of the register-heavy CPU
+     * dispatcher and makes both requirements visible in target disassembly.
+     */
+    value &= 0xffu;
+    shift &= 7u;
+    switch (shift) {
+    default:
+    case 0u:
+        high = value;
+        low = 0u;
+        left_mask = 0u;
+        right_mask = 0xffu;
+        break;
+    case 1u:
+        high = (uint8_t)(value >> 1);
+        low = (uint8_t)(value << 7);
+        left_mask = 0x80u;
+        right_mask = 0x7fu;
+        break;
+    case 2u:
+        high = (uint8_t)(value >> 2);
+        low = (uint8_t)(value << 6);
+        left_mask = 0xc0u;
+        right_mask = 0x3fu;
+        break;
+    case 3u:
+        high = (uint8_t)(value >> 3);
+        low = (uint8_t)(value << 5);
+        left_mask = 0xe0u;
+        right_mask = 0x1fu;
+        break;
+    case 4u:
+        high = (uint8_t)(value >> 4);
+        low = (uint8_t)(value << 4);
+        left_mask = 0xf0u;
+        right_mask = 0x0fu;
+        break;
+    case 5u:
+        high = (uint8_t)(value >> 5);
+        low = (uint8_t)(value << 3);
+        left_mask = 0xf8u;
+        right_mask = 0x07u;
+        break;
+    case 6u:
+        high = (uint8_t)(value >> 6);
+        low = (uint8_t)(value << 2);
+        left_mask = 0xfcu;
+        right_mask = 0x03u;
+        break;
+    case 7u:
+        high = (uint8_t)(value >> 7);
+        low = (uint8_t)(value << 1);
+        left_mask = 0xfeu;
+        right_mask = 0x01u;
+        break;
+    }
+
+    return (uint32_t)high | ((uint32_t)low << 8) |
+           ((uint32_t)left_mask << 16) | ((uint32_t)right_mask << 24);
+}
+
+S6502_HLE_GLYPH_ROW_ATTRIBUTE void s6502_firmware_hle_glyph_row(
+    uint32_t ix, uint32_t sp, uint32_t status,
+    s6502_hle_glyph_result_t *result)
+{
+    uint8_t *ram = s6502_stack_ram;
+    uint32_t source_index = ix & 0xffu;
+    uint32_t stack_pointer = sp & 0xffu;
+    uint32_t status_value = status & 0xffu;
+    uint32_t source;
+    uint32_t destination;
+    uint32_t alternate;
+    uint32_t value;
+    uint32_t bits;
+    uint32_t column;
+    uint32_t row;
+    uint32_t return_address;
+    uint32_t carry;
+
+    /*
+     * Keep the complete HLE row outside s6502_exec().  The S1C33 backend can
+     * otherwise reuse dirty upper bits of its byte-sized CPU-register locals
+     * across the many indirect memory calls in this block.  Full-width values
+     * with explicit masks make each 6502 wrap point unambiguous.
+     */
+    source = (uint32_t)ram[0x2fu] | ((uint32_t)ram[0x30u] << 8);
+    value = (uint32_t)mem_read((uint16_t)((source + source_index) & 0xffffu));
+    bits = s6502_firmware_hle_glyph_bits(
+        value & 0xffu, (uint32_t)mem_read(0x208bu) & 7u
+    );
+    mem_write(0x20b3u, (uint8_t)bits);
+    mem_write(0x20b4u, (uint8_t)(bits >> 8));
+    mem_write(0x20e5u, (uint8_t)(bits >> 16));
+    mem_write(0x20e6u, (uint8_t)(bits >> 24));
+
+    column = (uint32_t)mem_read(0x2081u) & 0xffu;
+    destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+    if (column == 0x98u) {
+        result->iy = 0u;
+        value = (uint32_t)mem_read(0x20b3u) & 0xfeu;
+        mem_write(0x20e6u, (uint8_t)value);
+        value = ((uint32_t)mem_read((uint16_t)destination) & 0x01u) | value;
+        mem_write((uint16_t)destination, (uint8_t)value);
+        return_address = 0x663du;
+    } else if (column >= 8u) {
+        result->iy = 1u;
+        alternate = (uint32_t)s6502_page3[0xe6u] |
+                    ((uint32_t)s6502_page3[0xe7u] << 8);
+        if (s6502_page3[0xe5u] == 1u && destination == alternate) {
+            alternate = (uint32_t)s6502_page3[0xe8u] |
+                        ((uint32_t)s6502_page3[0xe9u] << 8);
+            value = ((uint32_t)mem_read((uint16_t)alternate) &
+                     (uint32_t)mem_read(0x20e5u)) |
+                    (uint32_t)mem_read(0x20b3u);
+            mem_write((uint16_t)alternate, (uint8_t)value);
+            return_address = 0x6598u;
+        } else {
+            value = ((uint32_t)mem_read((uint16_t)destination) &
+                     (uint32_t)mem_read(0x20e5u)) |
+                    (uint32_t)mem_read(0x20b3u);
+            mem_write((uint16_t)destination, (uint8_t)value);
+            return_address = 0x65b9u;
+        }
+        value = ((uint32_t)mem_read(
+                     (uint16_t)((destination + 1u) & 0xffffu)) &
+                 (uint32_t)mem_read(0x20e6u)) |
+                (uint32_t)mem_read(0x20b4u);
+        mem_write(
+            (uint16_t)((destination + 1u) & 0xffffu), (uint8_t)value
+        );
+    } else {
+        result->iy = 0u;
+        alternate = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        value = ((uint32_t)mem_read((uint16_t)alternate) &
+                 (uint32_t)mem_read(0x20e5u)) |
+                (uint32_t)mem_read(0x20b3u);
+        mem_write((uint16_t)alternate, (uint8_t)value);
+
+        alternate = (uint32_t)s6502_page3[0xe6u] |
+                    ((uint32_t)s6502_page3[0xe7u] << 8);
+        if (s6502_page3[0xe5u] == 1u && destination == alternate) {
+            alternate = (uint32_t)s6502_page3[0xe8u] |
+                        ((uint32_t)s6502_page3[0xe9u] << 8);
+            value = ((uint32_t)mem_read((uint16_t)alternate) &
+                     (uint32_t)mem_read(0x20e6u)) |
+                    (uint32_t)mem_read(0x20b4u);
+            mem_write((uint16_t)alternate, (uint8_t)value);
+            return_address = 0x660au;
+        } else {
+            value = ((uint32_t)mem_read((uint16_t)destination) &
+                     (uint32_t)mem_read(0x20e6u)) |
+                    (uint32_t)mem_read(0x20b4u);
+            mem_write((uint16_t)destination, (uint8_t)value);
+            return_address = 0x6620u;
+        }
+    }
+
+    /* Preserve the two stack bytes written by the inlined JSR. */
+    ram[0x100u | stack_pointer] = (uint8_t)(return_address >> 8);
+    ram[0x100u | ((stack_pointer - 1u) & 0xffu)] =
+        (uint8_t)return_address;
+
+    row = (uint32_t)mem_read(0x2082u) & 0xffu;
+    if (row < 0x40u) {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+
+        destination = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        carry = destination >= 0x20u;
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x38u] = (uint8_t)destination;
+        ram[0x39u] = (uint8_t)(destination >> 8);
+        value = destination >> 8;
+        status_value = (status_value & ~1u) | carry;
+    } else if (row == 0x40u) {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        carry = destination >= 0x20u;
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+        ram[0x38u] = 0xf3u;
+        ram[0x39u] = 0x0fu;
+        value = 0x0fu;
+        status_value = (status_value & ~1u) | carry;
+    } else if (row == 0x41u) {
+        ram[0x38u] = 0x33u;
+        ram[0x39u] = 0x0cu;
+        ram[0x3au] = 0x40u;
+        ram[0x3bu] = 0x0cu;
+        value = (uint32_t)mem_read(0x2081u) & 0xffu;
+        status_value &= ~1u;
+        if (value >= 8u) {
+            column = (value - 8u) & 0xffu;
+            mem_write(0x20b7u, (uint8_t)column);
+            while (column >= 8u) {
+                column = (column - 8u) & 0xffu;
+                mem_write(0x20b7u, (uint8_t)column);
+                destination = (uint32_t)ram[0x3au] |
+                              ((uint32_t)ram[0x3bu] << 8);
+                destination = (destination + 1u) & 0xffffu;
+                ram[0x3au] = (uint8_t)destination;
+                ram[0x3bu] = (uint8_t)(destination >> 8);
+            }
+            value = (column - 8u) & 0xffu;
+        }
+    } else {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        destination = (destination + 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+
+        destination = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        carry = destination > 0xffdfu;
+        destination = (destination + 0x20u) & 0xffffu;
+        ram[0x38u] = (uint8_t)destination;
+        ram[0x39u] = (uint8_t)(destination >> 8);
+        value = destination >> 8;
+        status_value = (status_value & ~1u) | carry;
+    }
+
+    mem_write(0x2082u, (uint8_t)((row + 1u) & 0xffu));
+    source_index = (source_index + 1u) & 0xffu;
+    status_value = (status_value & ~0x82u) | (source_index & 0x80u) |
+                   (source_index ? 0u : 0x02u);
+
+    result->ac = (uint8_t)value;
+    result->ix = (uint8_t)source_index;
+    result->status = (uint8_t)status_value;
+}
+
+S6502_HLE_GLYPH_ROW_ATTRIBUTE void s6502_firmware_hle_wide_glyph_row(
+    uint32_t ix, uint32_t sp, uint32_t status,
+    s6502_hle_glyph_result_t *result)
+{
+    uint8_t *ram = s6502_stack_ram;
+    uint32_t source_index = ix & 0xffu;
+    uint32_t stack_pointer = sp & 0xffu;
+    uint32_t status_value = status & 0xffu;
+    uint32_t source;
+    uint32_t destination;
+    uint32_t alternate;
+    uint32_t raw;
+    uint32_t bits;
+    uint32_t value;
+    uint32_t b3;
+    uint32_t b4;
+    uint32_t b5;
+    uint32_t left_mask;
+    uint32_t right_mask;
+    uint32_t shift;
+    uint32_t column;
+    uint32_t row;
+    uint32_t return_address;
+    uint32_t carry;
+
+    source = (uint32_t)ram[0x2fu] | ((uint32_t)ram[0x30u] << 8);
+    b3 = (uint32_t)mem_read(
+        (uint16_t)((source + source_index) & 0xffffu)
+    );
+    b4 = (uint32_t)mem_read(
+        (uint16_t)((source + source_index + 1u) & 0xffffu)
+    );
+    raw = ((b3 & 0xffu) << 16) | ((b4 & 0xffu) << 8);
+    shift = (uint32_t)mem_read(0x208bu) & 7u;
+    switch (shift) {
+    default:
+    case 0u:
+        bits = raw;
+        left_mask = 0u;
+        right_mask = 0xffu;
+        break;
+    case 1u:
+        bits = raw >> 1;
+        left_mask = 0x80u;
+        right_mask = 0x7fu;
+        break;
+    case 2u:
+        bits = raw >> 2;
+        left_mask = 0xc0u;
+        right_mask = 0x3fu;
+        break;
+    case 3u:
+        bits = raw >> 3;
+        left_mask = 0xe0u;
+        right_mask = 0x1fu;
+        break;
+    case 4u:
+        bits = raw >> 4;
+        left_mask = 0xf0u;
+        right_mask = 0x0fu;
+        break;
+    case 5u:
+        bits = raw >> 5;
+        left_mask = 0xf8u;
+        right_mask = 0x07u;
+        break;
+    case 6u:
+        bits = raw >> 6;
+        left_mask = 0xfcu;
+        right_mask = 0x03u;
+        break;
+    case 7u:
+        bits = raw >> 7;
+        left_mask = 0xfeu;
+        right_mask = 0x01u;
+        break;
+    }
+    b3 = (bits >> 16) & 0xffu;
+    b4 = (bits >> 8) & 0xffu;
+    b5 = bits & 0xffu;
+    mem_write(0x20b3u, (uint8_t)b3);
+    mem_write(0x20b4u, (uint8_t)b4);
+    mem_write(0x20b5u, (uint8_t)b5);
+    mem_write(0x20e5u, (uint8_t)left_mask);
+    mem_write(0x20e6u, (uint8_t)right_mask);
+
+    column = (uint32_t)mem_read(0x2081u) & 0xffu;
+    destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+    if (column == 0x90u) {
+        result->iy = 0u;
+        value = ((uint32_t)mem_read((uint16_t)destination) & left_mask) | b3;
+        mem_write((uint16_t)destination, (uint8_t)value);
+        result->iy = 1u;
+        right_mask = b4 & 0xfeu;
+        mem_write(0x20e6u, (uint8_t)right_mask);
+        value = ((uint32_t)mem_read(
+                     (uint16_t)((destination + 1u) & 0xffffu)) & 0x01u) |
+                right_mask;
+        mem_write(
+            (uint16_t)((destination + 1u) & 0xffffu), (uint8_t)value
+        );
+        return_address = 0x61bbu;
+    } else if (column >= 8u) {
+        result->iy = 0u;
+        alternate = (uint32_t)s6502_page3[0xe6u] |
+                    ((uint32_t)s6502_page3[0xe7u] << 8);
+        if (s6502_page3[0xe5u] == 1u && destination == alternate) {
+            alternate = (uint32_t)s6502_page3[0xe8u] |
+                        ((uint32_t)s6502_page3[0xe9u] << 8);
+            value = ((uint32_t)mem_read((uint16_t)alternate) & left_mask) |
+                    b3;
+            mem_write((uint16_t)alternate, (uint8_t)value);
+        } else {
+            value = ((uint32_t)mem_read((uint16_t)destination) & left_mask) |
+                    b3;
+            mem_write((uint16_t)destination, (uint8_t)value);
+        }
+        mem_write(
+            (uint16_t)((destination + 1u) & 0xffffu), (uint8_t)b4
+        );
+        value = ((uint32_t)mem_read(
+                     (uint16_t)((destination + 2u) & 0xffffu)) & right_mask) |
+                b5;
+        mem_write(
+            (uint16_t)((destination + 2u) & 0xffffu), (uint8_t)value
+        );
+        result->iy = 2u;
+        return_address = 0x6130u;
+    } else {
+        result->iy = 0u;
+        alternate = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        value = ((uint32_t)mem_read((uint16_t)alternate) & left_mask) | b3;
+        mem_write((uint16_t)alternate, (uint8_t)value);
+
+        alternate = (uint32_t)s6502_page3[0xe6u] |
+                    ((uint32_t)s6502_page3[0xe7u] << 8);
+        if (s6502_page3[0xe5u] == 1u && destination == alternate) {
+            alternate = (uint32_t)s6502_page3[0xe8u] |
+                        ((uint32_t)s6502_page3[0xe9u] << 8);
+            mem_write((uint16_t)alternate, (uint8_t)b4);
+        } else {
+            mem_write((uint16_t)destination, (uint8_t)b4);
+        }
+        value = ((uint32_t)mem_read(
+                     (uint16_t)((destination + 1u) & 0xffffu)) & right_mask) |
+                b5;
+        mem_write(
+            (uint16_t)((destination + 1u) & 0xffffu), (uint8_t)value
+        );
+        result->iy = 1u;
+        return_address = 0x6192u;
+    }
+
+    ram[0x100u | stack_pointer] = (uint8_t)(return_address >> 8);
+    ram[0x100u | ((stack_pointer - 1u) & 0xffu)] =
+        (uint8_t)return_address;
+
+    /* Inline the shared $6646 address-update helper exactly as the regular
+     * glyph-row HLE does. */
+    row = (uint32_t)mem_read(0x2082u) & 0xffu;
+    if (row < 0x40u) {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+
+        destination = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        carry = destination >= 0x20u;
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x38u] = (uint8_t)destination;
+        ram[0x39u] = (uint8_t)(destination >> 8);
+        value = destination >> 8;
+        status_value = (status_value & ~1u) | carry;
+    } else if (row == 0x40u) {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        carry = destination >= 0x20u;
+        destination = (destination - 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+        ram[0x38u] = 0xf3u;
+        ram[0x39u] = 0x0fu;
+        value = 0x0fu;
+        status_value = (status_value & ~1u) | carry;
+    } else if (row == 0x41u) {
+        ram[0x38u] = 0x33u;
+        ram[0x39u] = 0x0cu;
+        ram[0x3au] = 0x40u;
+        ram[0x3bu] = 0x0cu;
+        value = (uint32_t)mem_read(0x2081u) & 0xffu;
+        status_value &= ~1u;
+        if (value >= 8u) {
+            column = (value - 8u) & 0xffu;
+            mem_write(0x20b7u, (uint8_t)column);
+            while (column >= 8u) {
+                column = (column - 8u) & 0xffu;
+                mem_write(0x20b7u, (uint8_t)column);
+                destination = (uint32_t)ram[0x3au] |
+                              ((uint32_t)ram[0x3bu] << 8);
+                destination = (destination + 1u) & 0xffffu;
+                ram[0x3au] = (uint8_t)destination;
+                ram[0x3bu] = (uint8_t)(destination >> 8);
+            }
+            value = (column - 8u) & 0xffu;
+        }
+    } else {
+        destination = (uint32_t)ram[0x3au] | ((uint32_t)ram[0x3bu] << 8);
+        destination = (destination + 0x20u) & 0xffffu;
+        ram[0x3au] = (uint8_t)destination;
+        ram[0x3bu] = (uint8_t)(destination >> 8);
+
+        destination = (uint32_t)ram[0x38u] | ((uint32_t)ram[0x39u] << 8);
+        carry = destination > 0xffdfu;
+        destination = (destination + 0x20u) & 0xffffu;
+        ram[0x38u] = (uint8_t)destination;
+        ram[0x39u] = (uint8_t)(destination >> 8);
+        value = destination >> 8;
+        status_value = (status_value & ~1u) | carry;
+    }
+
+    mem_write(0x2082u, (uint8_t)((row + 1u) & 0xffu));
+    source_index = (source_index + 2u) & 0xffu;
+    status_value = (status_value & ~0x82u) | (source_index & 0x80u) |
+                   (source_index ? 0u : 0x02u);
+
+    result->ac = (uint8_t)value;
+    result->ix = (uint8_t)source_index;
+    result->status = (uint8_t)status_value;
+}
+
+static __attribute__((noinline)) int s6502_firmware_hle_bitmap_match(void)
+{
+    uint32_t fnv = 2166136261u;
+    uint32_t sdbm = 0u;
+    uint16_t address;
+
+    if (PA(0x5cb3u) != 0xeb8cb3u)
+        return 0;
+    if (s6502_firmware_hle_bitmap_validation == 1u)
+        return 1;
+    if (s6502_firmware_hle_bitmap_validation == 2u)
+        return 0;
+    for (address = 0x5cb3u; address < 0x5d05u; ++address) {
+        uint8_t byte = mem_readx(address);
+
+        fnv = (fnv ^ byte) * 16777619u;
+        sdbm = byte + (sdbm << 6) + (sdbm << 16) - sdbm;
+    }
+    if (fnv != 0xb65dad14u || sdbm != 0xbbe189f5u) {
+        s6502_firmware_hle_bitmap_validation = 2u;
+        return 0;
+    }
+    s6502_firmware_hle_bitmap_validation = 1u;
+    return 1;
+}
+
+static __attribute__((noinline)) int s6502_firmware_hle_fill_match(void)
+{
+    static const uint8_t signature[] = {
+        0xe0, 0x00, 0xf0, 0x09, 0xa5, 0x03, 0x91,
+        0x2f, 0xc8, 0xca, 0x4c, 0x33, 0x79, 0x60,
+    };
+    uint32_t index;
+
+    if (PA(0x7933u) != 0xebe933u)
+        return 0;
+    if (s6502_firmware_hle_fill_validation == 1u)
+        return 1;
+    if (s6502_firmware_hle_fill_validation == 2u)
+        return 0;
+    for (index = 0; index < sizeof(signature); ++index) {
+        if (mem_readx((uint16_t)(0x7933u + index)) != signature[index]) {
+            s6502_firmware_hle_fill_validation = 2u;
+            return 0;
+        }
+    }
+    s6502_firmware_hle_fill_validation = 1u;
+    return 1;
+}
+
+void gam4980_set_firmware_hle_enabled(int enabled)
+{
+    s6502_firmware_hle_enabled = enabled != 0;
+}
+
+int gam4980_firmware_hle_enabled(void)
+{
+    return s6502_firmware_hle_enabled;
+}
+
+u32 gam4980_firmware_hle_hits(void)
+{
+    return s6502_firmware_hle_hits;
+}
+
+u64 gam4980_firmware_hle_guest_cycles(void)
+{
+    return s6502_firmware_hle_guest_cycles;
+}
+#undef S6502_HLE_GLYPH_ROW_ATTRIBUTE
+#endif
 
 #ifdef GAM4980_RUNTIME_PERFORMANCE_LOG
 static void performance_sample_pc(void)
@@ -753,7 +1618,8 @@ static __attribute__((noinline)) int s6502_aot_match(uint32_t block_id)
 }
 
 #if defined(GAM4980_AOT_DIAGNOSTICS) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
 void gam4980_set_performance_debug(int enabled)
 {
     s6502_performance_debug = enabled != 0;
@@ -1409,6 +2275,15 @@ int gam4980_init(const gam4980_buffers_t *buffers)
         s6502_aot_bank2_varies, 0, sizeof(s6502_aot_bank2_varies)
     );
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    s6502_firmware_hle_validation = 0u;
+    s6502_firmware_hle_glyph_validation = 0u;
+    s6502_firmware_hle_bitmap_validation = 0u;
+    s6502_firmware_hle_fill_validation = 0u;
+    s6502_firmware_hle_wide_glyph_validation = 0u;
+    s6502_firmware_hle_hits = 0u;
+    s6502_firmware_hle_guest_cycles = 0u;
+#endif
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
     s6502_game_aot_entry_count = 0;
     s6502_game_aot_bank_mask = 0;
@@ -1423,6 +2298,9 @@ int gam4980_init(const gam4980_buffers_t *buffers)
 #endif
 #endif
     sys.ram = buffers->ram;
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    s6502_firmware_hle_banks = sys.bk_tab;
+#endif
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
     s6502_game_aot_banks = sys.bk_tab;
 #endif
@@ -1937,6 +2815,7 @@ u64 gam4980_state_hash(void)
     hash = state_hash_bytes(hash, (const u8 *)&shutdown_pc, sizeof(shutdown_pc));
     return hash;
 }
+
 #endif
 
 void gam4980_deinit(void)

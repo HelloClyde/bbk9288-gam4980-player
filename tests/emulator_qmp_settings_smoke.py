@@ -55,22 +55,34 @@ def main() -> None:
         qmp.capture(args.output / "05-aot-on.ppm")
         qmp.key("down")
         time.sleep(0.8)
+        qmp.key("ret")    # firmware HLE on
+        time.sleep(0.8)
+        qmp.capture(args.output / "06-hle-on.ppm")
+
+        qmp.key("down")
+        time.sleep(0.8)
         qmp.key("ret")    # performance debug on
         time.sleep(0.8)
-        qmp.capture(args.output / "06-debug-on.ppm")
+        qmp.capture(args.output / "07-debug-on.ppm")
+
+        qmp.key("down")
+        time.sleep(0.8)
+        qmp.key("ret")    # 2x speed on
+        time.sleep(0.8)
+        qmp.capture(args.output / "08-speed-2x.ppm")
 
         qmp.key("down")
         time.sleep(0.8)
         qmp.key("ret")    # return to selector and persist settings
         time.sleep(1.0)
-        qmp.capture(args.output / "07-selector-return.ppm")
+        qmp.capture(args.output / "09-selector-return.ppm")
         qmp.key("ret", hold=1.0)
-        time.sleep(55.0)
-        qmp.capture(args.output / "08-game-menu.ppm")
+        time.sleep(28.0)
+        qmp.capture(args.output / "10-game-menu-2x.ppm")
 
         qmp.key("esc", hold=1.4)
         time.sleep(4.0)
-        qmp.capture(args.output / "09-after-exit.ppm")
+        qmp.capture(args.output / "11-after-exit.ppm")
     finally:
         qmp.close()
 

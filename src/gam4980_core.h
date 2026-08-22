@@ -133,6 +133,12 @@ int gam4980_save_dirty(void);
 void gam4980_save_mark_clean(void);
 int gam4980_shutdown_requested(void);
 u16 gam4980_shutdown_pc(void);
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+void gam4980_set_firmware_hle_enabled(int enabled);
+int gam4980_firmware_hle_enabled(void);
+u32 gam4980_firmware_hle_hits(void);
+u64 gam4980_firmware_hle_guest_cycles(void);
+#endif
 #ifdef GAM4980_ENABLE_GAME_LOAD_AOT
 void gam4980_set_game_load_aot_enabled(int enabled);
 u32 gam4980_game_aot_entry_count(void);
@@ -141,7 +147,8 @@ u32 gam4980_game_aot_entry_physical_pc(u32 entry_id);
 u32 gam4980_game_aot_entry_pattern(u32 entry_id);
 #endif
 #if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
 void gam4980_set_performance_debug(int enabled);
 int gam4980_performance_debug_enabled(void);
 #endif

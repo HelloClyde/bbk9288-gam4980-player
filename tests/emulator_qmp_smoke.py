@@ -80,6 +80,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="start with the emulator already showing the home screen",
     )
+    parser.add_argument(
+        "--system-exit",
+        action="store_true",
+        help="advance to gameplay and verify the game's system-menu exit path",
+    )
+    parser.add_argument(
+        "--enable-hle",
+        action="store_true",
+        help="enable firmware HLE in the file selector before starting",
+    )
+    parser.add_argument(
+        "--visit-settings",
+        action="store_true",
+        help="open and leave settings without changing an option",
+    )
+    parser.add_argument(
+        "--title-exit",
+        action="store_true",
+        help="close the 9288 app from the title screen instead of starting a game",
+    )
     return parser.parse_args()
 
 
@@ -92,7 +112,7 @@ def main() -> None:
             time.sleep(args.boot_wait)
             qmp.key("ret")   # dismiss the clock prompt (calendar opens below it)
             time.sleep(1.0)
-            qmp.key("f12")   # leave Calendar
+            qmp.key("esc")   # leave Calendar on the 9288 key matrix
             time.sleep(1.0)
             qmp.key("f5")    # Start / home
             time.sleep(2.0)
@@ -107,9 +127,37 @@ def main() -> None:
         time.sleep(3.0)
         qmp.capture(args.output / "02-file-selector.ppm")
 
+        if args.enable_hle or args.visit_settings:
+            qmp.key("up")       # settings row immediately precedes the game
+            time.sleep(0.5)
+            qmp.key("ret")      # enter settings
+            time.sleep(0.8)
+            if args.enable_hle:
+                qmp.key("down")     # firmware HLE row
+                time.sleep(0.5)
+                qmp.key("ret")      # enable HLE; leave performance debug off
+                time.sleep(0.5)
+                return_steps = 3
+            else:
+                return_steps = 4
+            for _ in range(return_steps):  # return to game list
+                qmp.key("down")
+                time.sleep(0.3)
+            qmp.key("ret")
+            time.sleep(1.0)
+            qmp.capture(args.output / "02a-hle-enabled.ppm")
+
         qmp.key("ret", hold=1.0)  # select the highlighted .gam with a fresh press/release
         time.sleep(55.0)      # allow the full 9288-speed logo/title sequence
         qmp.capture(args.output / "03-game-menu.ppm")
+
+        if args.title_exit:
+            qmp.key("esc", hold=1.4)
+            time.sleep(10.0)
+            qmp.capture(args.output / "04-after-title-exit.ppm")
+            time.sleep(20.0)
+            qmp.capture(args.output / "05-title-exit-stable.ppm")
+            return
 
         qmp.key("ret")       # choose the default "new journey" item
         time.sleep(3.0)
@@ -120,6 +168,39 @@ def main() -> None:
         qmp.key("ret")       # verify that the opening story accepts input
         time.sleep(8.0)
         qmp.capture(args.output / "05-story-dialog.ppm")
+
+        if args.system_exit:
+            # Finish the opening dialogue, open the in-game menu with Exit,
+            # choose 系统 -> 结束游戏, then leave the returned title menu.
+            # F6 is the physical 4980 目录 key and is not this game menu.
+            # The release copy of Fumozhuan has a longer opening conversation
+            # than the earlier fixture.  Extra confirmations are harmless once
+            # the world is idle and make sure Escape reaches the game menu.
+            for _ in range(240):
+                qmp.key("ret", hold=0.12)
+                time.sleep(0.38)
+            qmp.capture(args.output / "06-gameplay.ppm")
+            qmp.key("esc", hold=0.12)
+            time.sleep(4.0)
+            qmp.capture(args.output / "07-game-menu.ppm")
+            for _ in range(3):
+                qmp.key("down", hold=0.12)
+                time.sleep(0.5)
+            qmp.key("ret", hold=0.12)
+            time.sleep(3.0)
+            qmp.capture(args.output / "08-system-submenu.ppm")
+            for _ in range(3):
+                qmp.key("down", hold=0.12)
+                time.sleep(0.5)
+            qmp.key("ret", hold=0.12)
+            time.sleep(5.0)
+            qmp.capture(args.output / "09-title-after-end-game.ppm")
+            qmp.key("esc")
+            time.sleep(10.0)
+            qmp.capture(args.output / "10-after-system-exit.ppm")
+            time.sleep(20.0)
+            qmp.capture(args.output / "11-system-exit-stable.ppm")
+            return
 
         qmp.key("esc")       # short press sends game Exit without closing the app
         time.sleep(3.0)

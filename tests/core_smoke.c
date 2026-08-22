@@ -110,8 +110,14 @@ int main(int argc, char **argv)
         getenv("GAM4980_DISABLE_GAME_LOAD_AOT") == 0
     );
 #endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    gam4980_set_firmware_hle_enabled(
+        getenv("GAM4980_DISABLE_FIRMWARE_HLE") == 0
+    );
+#endif
 #if (defined(GAM4980_ENABLE_AOT) && defined(GAM4980_AOT_DIAGNOSTICS)) || \
-    defined(GAM4980_RUNTIME_PERFORMANCE_LOG)
+    defined(GAM4980_RUNTIME_PERFORMANCE_LOG) || \
+    defined(GAM4980_ENABLE_FIRMWARE_HLE)
     gam4980_set_performance_debug(
         getenv("GAM4980_DISABLE_PERFORMANCE_DEBUG") == 0
     );
@@ -170,6 +176,14 @@ int main(int argc, char **argv)
         (unsigned long long)gam4980_performance_guest_cycles(),
         (unsigned)gam4980_performance_sample_count(),
         (unsigned)gam4980_performance_sample_dropped()
+    );
+#endif
+#ifdef GAM4980_ENABLE_FIRMWARE_HLE
+    printf(
+        "firmware hle enabled=%d hits=%u cycles=%llu\n",
+        gam4980_firmware_hle_enabled(),
+        (unsigned)gam4980_firmware_hle_hits(),
+        (unsigned long long)gam4980_firmware_hle_guest_cycles()
     );
 #endif
 #ifdef GAM4980_STATE_DIAGNOSTICS
